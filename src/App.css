@@ -159,18 +159,37 @@
   background: #e2e8f0;
 }
 
-/* Mapeo de columnas */
-.ayuda-mapeo {
-  margin: 0 0 1rem;
+/* Detección de columnas (línea discreta + ajuste opcional) */
+.deteccion {
+  margin: 0.25rem 0 0;
   color: var(--texto-suave);
-  font-size: 0.92rem;
+  font-size: 0.85rem;
   line-height: 1.5;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primario);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link:hover {
+  color: var(--primario-hover);
 }
 
 .mapeo {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
 }
 
 .mapeo__campo {

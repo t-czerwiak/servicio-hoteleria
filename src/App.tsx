@@ -23,11 +23,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
   const [arrastrando, setArrastrando] = useState(false);
+  const [ajustando, setAjustando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const procesarArchivo = useCallback(async (file: File) => {
     setError("");
     setSheet(null);
+    setAjustando(false);
     setFileName(file.name);
 
     const nombre = file.name.toLowerCase();
@@ -70,6 +72,7 @@ export default function App() {
     setSheet(null);
     setError("");
     setFileName("");
+    setAjustando(false);
   };
 
   // Cálculo en vivo: cambia al instante si el usuario corrige las columnas.
@@ -168,20 +171,58 @@ export default function App() {
         </div>
 
         {sheet && !cargando && (
-          <>
-            {/* Panel de mapeo de columnas */}
-            <section aria-labelledby="mapeo-titulo" className="card">
-              <div className="resultado__cabecera">
-                <h2 id="mapeo-titulo">Columnas detectadas</h2>
+          <section aria-labelledby="resultado-titulo" className="card">
+            <div className="resultado__cabecera">
+              <h2 id="resultado-titulo">
+                Resultado <span className="contador">({rows.length} empleados)</span>
+              </h2>
+              <div className="acciones">
+                {!hayError && (
+                  <button
+                    type="button"
+                    className="boton boton--primario"
+                    onClick={() => exportToExcel(rows)}
+                    disabled={rows.length === 0}
+                  >
+                    Descargar Excel
+                  </button>
+                )}
                 <button type="button" className="boton boton--secundario" onClick={reiniciar}>
                   Procesar otro archivo
                 </button>
               </div>
-              <p className="ayuda-mapeo">
-                Detecté automáticamente estas columnas en «{fileName}». Si no son las
-                correctas, cambialas y la tabla se recalcula al instante.
-              </p>
+            </div>
 
+            {/* Solo se muestran avisos relevantes (advertencias/errores), no info. */}
+            {avisos.some((a) => a.level !== "info") && (
+              <ul className="avisos" aria-live="polite">
+                {avisos
+                  .filter((a) => a.level !== "info")
+                  .map((a, i) => (
+                    <li key={i} className={`aviso aviso--${a.level}`}>
+                      {a.level === "error" ? "⛔" : "⚠️"} {a.message}
+                    </li>
+                  ))}
+              </ul>
+            )}
+
+            {/* Escape hatch discreto: ajustar columnas solo si hace falta. */}
+            {sheet.columns.length > 0 && (
+              <p className="deteccion">
+                Columnas usadas — Nombre: <strong>{sheet.columns[nameCol]?.label}</strong>,
+                Hora: <strong>{sheet.columns[timeCol]?.label}</strong>.{" "}
+                <button
+                  type="button"
+                  className="link"
+                  aria-expanded={ajustando}
+                  onClick={() => setAjustando((v) => !v)}
+                >
+                  {ajustando ? "Ocultar ajuste" : "¿Columnas incorrectas? Ajustar"}
+                </button>
+              </p>
+            )}
+
+            {ajustando && (
               <div className="mapeo">
                 <div className="mapeo__campo">
                   <label htmlFor="col-nombre">Columna de Nombre</label>
@@ -212,68 +253,39 @@ export default function App() {
                   </select>
                 </div>
               </div>
-
-              {avisos.length > 0 && (
-                <ul className="avisos" aria-live="polite">
-                  {avisos.map((a, i) => (
-                    <li key={i} className={`aviso aviso--${a.level}`}>
-                      {a.level === "error" ? "⛔" : a.level === "warn" ? "⚠️" : "ℹ️"}{" "}
-                      {a.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {/* Resultado */}
-            {!hayError && (
-              <section aria-labelledby="resultado-titulo" className="card">
-                <div className="resultado__cabecera">
-                  <h2 id="resultado-titulo">
-                    Resultado <span className="contador">({rows.length} empleados)</span>
-                  </h2>
-                  <button
-                    type="button"
-                    className="boton boton--primario"
-                    onClick={() => exportToExcel(rows)}
-                    disabled={rows.length === 0}
-                  >
-                    Descargar Excel
-                  </button>
-                </div>
-
-                {rows.length === 0 ? (
-                  <p className="info-card">No se encontraron empleados con fichajes válidos.</p>
-                ) : (
-                  <div className="tabla-wrap">
-                    <table className="tabla">
-                      <caption className="sr-only">
-                        Entrada, salida y horas trabajadas por empleado
-                      </caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Nombre completo</th>
-                          <th scope="col">Entrada</th>
-                          <th scope="col">Salida</th>
-                          <th scope="col">Horas trabajadas</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r) => (
-                          <tr key={r.nombre}>
-                            <td>{r.nombre}</td>
-                            <td className="num">{r.entrada || "—"}</td>
-                            <td className="num">{r.salida || "—"}</td>
-                            <td className="num">{r.total || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
             )}
-          </>
+
+            {!hayError &&
+              (rows.length === 0 ? (
+                <p className="info-card">No se encontraron empleados con fichajes válidos.</p>
+              ) : (
+                <div className="tabla-wrap">
+                  <table className="tabla">
+                    <caption className="sr-only">
+                      Entrada, salida y horas trabajadas por empleado
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Nombre completo</th>
+                        <th scope="col">Entrada</th>
+                        <th scope="col">Salida</th>
+                        <th scope="col">Horas trabajadas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.nombre}>
+                          <td>{r.nombre}</td>
+                          <td className="num">{r.entrada || "—"}</td>
+                          <td className="num">{r.salida || "—"}</td>
+                          <td className="num">{r.total || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+          </section>
         )}
       </main>
 
