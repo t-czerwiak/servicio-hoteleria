@@ -111,37 +111,48 @@ export async function parseExcel(file: File): Promise<Punch[]> {
     throw new ArchivoInvalidoError("El archivo está vacío.");
   }
 
-  // Detectar columnas contando, por columna, cuántas celdas son horas y cuántas nombres.
+  // Detectar columnas de forma robusta. Por cada columna contamos horas y nombres,
+  // y -clave- cuántos valores DISTINTOS tiene. En los reportes reales la fecha es
+  // una columna constante (1 valor distinto) que se descarta sola, mientras que la
+  // hora varía mucho. Lo mismo distingue la columna de nombres (muchos distintos)
+  // de columnas tipo "Evento" o "Sector" (pocos valores repetidos).
   const ncols = rows.reduce((max, r) => Math.max(max, r.length), 0);
   const timeCount = new Array(ncols).fill(0);
   const nameCount = new Array(ncols).fill(0);
+  const timeDistinct: Set<number>[] = Array.from({ length: ncols }, () => new Set());
+  const nameDistinct: Set<string>[] = Array.from({ length: ncols }, () => new Set());
 
   for (const row of rows) {
     for (let c = 0; c < ncols; c++) {
       const cell = row[c];
-      if (parseTime(cell) !== null) timeCount[c]++;
-      else if (isNameLike(cell)) nameCount[c]++;
+      const t = parseTime(cell);
+      if (t !== null) {
+        timeCount[c]++;
+        timeDistinct[c].add(t);
+      } else if (isNameLike(cell)) {
+        nameCount[c]++;
+        nameDistinct[c].add(String(cell).trim().toLocaleLowerCase("es"));
+      }
     }
   }
 
-  const timeCol = argMax(timeCount);
+  // Columna de hora: la de MÁS horas distintas (evita la columna de fecha constante).
+  const timeCol = bestColumn(
+    timeDistinct.map((s) => s.size),
+    timeCount
+  );
   if (timeCol === -1 || timeCount[timeCol] === 0) {
     throw new ArchivoInvalidoError(
       "El archivo no contiene horarios (HH:MM). No parece un registro de fichajes."
     );
   }
 
-  // Mejor columna de nombre, distinta a la de hora.
-  let nameCol = -1;
-  let best = 0;
-  for (let c = 0; c < ncols; c++) {
-    if (c === timeCol) continue;
-    if (nameCount[c] > best) {
-      best = nameCount[c];
-      nameCol = c;
-    }
-  }
-  if (nameCol === -1) {
+  // Columna de nombre: la de MÁS nombres distintos, distinta a la de hora.
+  const nameCol = bestColumn(
+    nameDistinct.map((s, c) => (c === timeCol ? 0 : s.size)),
+    nameCount
+  );
+  if (nameCol === -1 || nameCount[nameCol] === 0) {
     throw new ArchivoInvalidoError(
       "El archivo no contiene nombres de empleados. No parece un registro de fichajes."
     );
@@ -167,12 +178,17 @@ export async function parseExcel(file: File): Promise<Punch[]> {
   return punches;
 }
 
-function argMax(arr: number[]): number {
+/** Índice de mayor valor en `primary`; desempata por `tiebreak`. -1 si todo es <= 0. */
+function bestColumn(primary: number[], tiebreak: number[]): number {
   let idx = -1;
-  let max = -Infinity;
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i] > max) {
-      max = arr[i];
+  let bestP = 0;
+  let bestT = -Infinity;
+  for (let i = 0; i < primary.length; i++) {
+    const p = primary[i];
+    if (p <= 0) continue;
+    if (p > bestP || (p === bestP && tiebreak[i] > bestT)) {
+      bestP = p;
+      bestT = tiebreak[i];
       idx = i;
     }
   }
