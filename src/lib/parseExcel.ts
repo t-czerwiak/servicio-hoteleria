@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { Punch } from "../types";
+import type { Punch, ParsedSheet, ColumnInfo } from "../types";
 
 /** Error con mensaje claro y orientado al usuario (en español). */
 export class ArchivoInvalidoError extends Error {
@@ -60,7 +60,7 @@ function fractionToMinutes(fraction: number): number | null {
 }
 
 /** ¿El valor parece un nombre? (tiene al menos una letra y no es una hora). */
-function isNameLike(value: unknown): boolean {
+export function isNameLike(value: unknown): boolean {
   const text = String(value ?? "").trim();
   if (text.length < 2) return false;
   if (parseTime(text) !== null) return false;
@@ -75,11 +75,13 @@ export function formatMinutes(minutes: number): string {
 }
 
 /**
- * Lee un archivo Excel/CSV y devuelve la lista de fichajes.
- * Detecta automáticamente la columna de nombre y la de hora.
- * Lanza ArchivoInvalidoError si el archivo no contiene nombres + horarios.
+ * Lee un archivo Excel/CSV y devuelve las filas crudas + metadatos por columna +
+ * una sugerencia automática de qué columna es la hora y cuál el nombre.
+ * No procesa todavía: el usuario puede confirmar o corregir las columnas.
+ * Lanza ArchivoInvalidoError solo si el archivo es ilegible, vacío, o no tiene
+ * ninguna columna con horas o ninguna con texto tipo nombre.
  */
-export async function parseExcel(file: File): Promise<Punch[]> {
+export async function readSheet(file: File): Promise<ParsedSheet> {
   const buffer = await file.arrayBuffer();
 
   let workbook: XLSX.WorkBook;
@@ -111,11 +113,10 @@ export async function parseExcel(file: File): Promise<Punch[]> {
     throw new ArchivoInvalidoError("El archivo está vacío.");
   }
 
-  // Detectar columnas de forma robusta. Por cada columna contamos horas y nombres,
-  // y -clave- cuántos valores DISTINTOS tiene. En los reportes reales la fecha es
-  // una columna constante (1 valor distinto) que se descarta sola, mientras que la
-  // hora varía mucho. Lo mismo distingue la columna de nombres (muchos distintos)
-  // de columnas tipo "Evento" o "Sector" (pocos valores repetidos).
+  // Por cada columna: contar horas y nombres, y -clave- cuántos valores DISTINTOS
+  // tiene. En reportes reales la fecha es una columna constante (1 distinto) que se
+  // descarta sola; la hora varía mucho. Lo mismo separa la columna de nombres
+  // (muchos distintos) de columnas tipo "Evento"/"Sector" (pocos valores repetidos).
   const ncols = rows.reduce((max, r) => Math.max(max, r.length), 0);
   const timeCount = new Array(ncols).fill(0);
   const nameCount = new Array(ncols).fill(0);
@@ -136,30 +137,83 @@ export async function parseExcel(file: File): Promise<Punch[]> {
     }
   }
 
-  // Columna de hora: la de MÁS horas distintas (evita la columna de fecha constante).
-  const timeCol = bestColumn(
-    timeDistinct.map((s) => s.size),
-    timeCount
-  );
-  if (timeCol === -1 || timeCount[timeCol] === 0) {
-    throw new ArchivoInvalidoError(
-      "El archivo no contiene horarios (HH:MM). No parece un registro de fichajes."
-    );
-  }
-
-  // Columna de nombre: la de MÁS nombres distintos, distinta a la de hora.
-  const nameCol = bestColumn(
-    nameDistinct.map((s, c) => (c === timeCol ? 0 : s.size)),
+  // Sugerencias automáticas.
+  const suggestedTimeCol = bestColumn(timeDistinct.map((s) => s.size), timeCount);
+  const suggestedNameCol = bestColumn(
+    nameDistinct.map((s, c) => (c === suggestedTimeCol ? 0 : s.size)),
     nameCount
   );
-  if (nameCol === -1 || nameCount[nameCol] === 0) {
+
+  if (suggestedTimeCol === -1) {
     throw new ArchivoInvalidoError(
-      "El archivo no contiene nombres de empleados. No parece un registro de fichajes."
+      "El archivo no contiene ninguna columna con horarios (HH:MM). No parece un registro de fichajes."
+    );
+  }
+  if (suggestedNameCol === -1) {
+    throw new ArchivoInvalidoError(
+      "El archivo no contiene ninguna columna con nombres. No parece un registro de fichajes."
     );
   }
 
-  // Construir los fichajes. Las filas de encabezado se descartan solas:
-  // su celda de hora ("Hora") no parsea como horario.
+  // Detectar fila de encabezado para etiquetar columnas: la última fila no vacía
+  // anterior a la primera fila que tiene una hora en la columna de hora sugerida.
+  const firstDataRow = rows.findIndex((r) => parseTime(r[suggestedTimeCol]) !== null);
+  let headerRow: unknown[] | null = null;
+  for (let i = firstDataRow - 1; i >= 0; i--) {
+    if (rows[i].some((c) => String(c ?? "").trim() !== "")) {
+      headerRow = rows[i];
+      break;
+    }
+  }
+
+  const columns: ColumnInfo[] = [];
+  for (let c = 0; c < ncols; c++) {
+    const letter = XLSX.utils.encode_col(c);
+    const headerLabel = String(headerRow?.[c] ?? "").trim();
+    const samples: string[] = [];
+    for (let i = firstDataRow < 0 ? 0 : firstDataRow; i < rows.length && samples.length < 3; i++) {
+      const v = displayCell(rows[i][c]);
+      if (v !== "") samples.push(v);
+    }
+    columns.push({
+      index: c,
+      letter,
+      label: headerLabel || `Columna ${letter}`,
+      samples,
+      timeCount: timeCount[c],
+      nameCount: nameCount[c],
+      distinctTimes: timeDistinct[c].size,
+      distinctNames: nameDistinct[c].size,
+    });
+  }
+
+  return {
+    rows,
+    columns,
+    suggestedTimeCol,
+    suggestedNameCol,
+    totalRows: rows.length,
+  };
+}
+
+/** Texto legible de una celda (Date -> "HH:MM"). */
+export function displayCell(value: unknown): string {
+  if (value instanceof Date) {
+    const t = parseTime(value);
+    return t === null ? "" : formatMinutes(t);
+  }
+  return String(value ?? "").trim();
+}
+
+/**
+ * Construye los fichajes a partir de las filas y las columnas elegidas.
+ * Las filas de encabezado/basura se descartan solas: su celda de hora no parsea.
+ */
+export function buildPunches(
+  rows: unknown[][],
+  timeCol: number,
+  nameCol: number
+): Punch[] {
   const punches: Punch[] = [];
   for (const row of rows) {
     const minutes = parseTime(row[timeCol]);
@@ -168,13 +222,6 @@ export async function parseExcel(file: File): Promise<Punch[]> {
     if (!isNameLike(name)) continue;
     punches.push({ name, minutes });
   }
-
-  if (punches.length === 0) {
-    throw new ArchivoInvalidoError(
-      "No se encontró ningún fichaje válido (nombre + horario) en el archivo."
-    );
-  }
-
   return punches;
 }
 

@@ -12,11 +12,23 @@ a ningún servidor ni se guarda en ninguna base de datos.
 ## ✨ Funcionalidades
 
 - Subida de un archivo a la vez (`.xlsx`, `.xls`, `.csv`, una sola hoja).
-- Validación automática: se rechaza el archivo si no contiene **nombre de empleado + horario**.
-- Detección automática de la columna de nombre y la de hora.
+- **Funciona con cualquier estructura**: detecta automáticamente las columnas de
+  nombre y hora (sin importar el orden, encabezados dispersos o filas de título), y
+  permite **confirmar o corregir** ese mapeo con dos desplegables. La tabla se
+  recalcula al instante.
+- **Validación inteligente**: rechaza archivos sin nombre+horario, y advierte cuando
+  el mapeo parece incorrecto (ej. se eligió una columna de sector o de fecha).
 - Procesamiento 100% en el cliente (uso libre, ilimitado, sin almacenamiento).
 - Exportación del resultado a Excel.
 - Interfaz accesible (etiquetas ARIA, navegación por teclado, foco visible).
+
+### Formatos probados
+
+- CSV/Excel simple (`Nombre`, `Hora`).
+- Reportes reales de fichadas tipo ZK ("Reporte de Eventos"): decenas de columnas,
+  celdas combinadas, una columna de fecha constante y columnas señuelo (Evento, Sector).
+  Hay un ejemplo con datos ficticios en [`ejemplos/`](ejemplos/) (generado con
+  [`scripts/gen-example.mjs`](scripts/gen-example.mjs)).
 
 ## 🧠 Lógica de procesamiento
 
