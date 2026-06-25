@@ -18,6 +18,12 @@ export class ArchivoInvalidoError extends Error {
 export function parseTime(value: unknown): number | null {
   if (value === null || value === undefined) return null;
 
+  // Celda de fecha/hora real de Excel (objeto Date).
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.getHours() * 60 + value.getMinutes();
+  }
+
   // Fracción de día de Excel (cuando la celda viene como número 0–1).
   if (typeof value === "number") {
     return fractionToMinutes(value);
@@ -78,7 +84,8 @@ export async function parseExcel(file: File): Promise<Punch[]> {
 
   let workbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    // codepage 65001 = UTF-8: evita que los CSV con tildes/ñ se lean como Latin-1.
+    workbook = XLSX.read(buffer, { type: "array", cellDates: true, codepage: 65001 });
   } catch {
     throw new ArchivoInvalidoError(
       "No se pudo leer el archivo. Asegurate de que sea un Excel o CSV válido."
@@ -91,10 +98,11 @@ export async function parseExcel(file: File): Promise<Punch[]> {
   }
 
   const sheet = workbook.Sheets[sheetName];
-  // header:1 -> matriz de filas; raw:false -> valores formateados como texto.
+  // header:1 -> matriz de filas; raw:true conserva los Date de celdas de hora
+  // y los strings "08:02" de los CSV tal cual (luego parseTime los normaliza).
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
-    raw: false,
+    raw: true,
     defval: "",
     blankrows: false,
   });
