@@ -7,6 +7,8 @@ a ningún servidor ni se guarda en ninguna base de datos.
 
 > Proyecto de portfolio — React + TypeScript + Vite, desplegado en Firebase Hosting.
 
+**🔗 App en vivo:** https://control-horarios-9cf4d.web.app
+
 ## ✨ Funcionalidades
 
 - Subida de un archivo a la vez (`.xlsx`, `.xls`, `.csv`, una sola hoja).
