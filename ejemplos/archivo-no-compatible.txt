@@ -1,0 +1,5 @@
+Este es un archivo de texto plano (.txt).
+
+No es un Excel ni un CSV, así que la aplicación Control de Horarios
+debería rechazarlo apenas se intenta subir, por tener una extensión
+no soportada (solo acepta .xlsx, .xls y .csv).
