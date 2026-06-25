@@ -1,0 +1,25 @@
+# Dependencias
+node_modules
+
+# Build
+dist
+dist-ssl
+
+# Logs
+*.log
+npm-debug.log*
+
+# Entorno
+.env
+.env.local
+
+# Editor / SO
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Firebase
+.firebase
+firebase-debug.log
+.firebaserc.local
