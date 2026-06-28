@@ -1,4 +1,4 @@
-import type { ParsedSheet, Punch, EmployeeRow } from "../types";
+import type { ParsedSheet, Punch, EmployeeRow, Mapping } from "../types";
 import { parseTime, isNameLike } from "./parseExcel";
 
 export interface Aviso {
@@ -14,11 +14,11 @@ export interface Aviso {
  */
 export function validar(
   sheet: ParsedSheet,
-  timeCol: number,
-  nameCol: number,
+  mapping: Mapping,
   punches: Punch[],
   rows: EmployeeRow[]
 ): Aviso[] {
+  const { timeCol, nameCol } = mapping;
   const avisos: Aviso[] = [];
 
   if (timeCol === nameCol) {

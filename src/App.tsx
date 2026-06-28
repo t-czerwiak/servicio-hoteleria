@@ -4,10 +4,19 @@ import { readSheet, buildPunches, ArchivoInvalidoError } from "./lib/parseExcel"
 import { processRecords } from "./lib/processRecords";
 import { validar } from "./lib/validate";
 import { exportToExcel } from "./lib/exportExcel";
-import type { ColumnInfo, ParsedSheet } from "./types";
+import type { ColumnInfo, Mapping, ParsedSheet, ResultColumn } from "./types";
 import "./App.css";
 
 const EXTENSIONES_VALIDAS = [".xlsx", ".xls", ".csv"];
+
+const MAPPING_VACIO: Mapping = {
+  nameCol: -1,
+  timeCol: -1,
+  dateCol: -1,
+  dniCol: -1,
+  sedeCol: -1,
+  posicionCol: -1,
+};
 
 /** Texto de una opción del desplegable de columnas. */
 function opcionColumna(col: ColumnInfo): string {
@@ -15,10 +24,24 @@ function opcionColumna(col: ColumnInfo): string {
   return `${col.letter} · ${col.label}${muestra}`;
 }
 
+/** Columnas visibles del resultado, según qué campos opcionales se detectaron. */
+function buildColumns(m: Mapping): ResultColumn[] {
+  const cols: ResultColumn[] = [];
+  if (m.dniCol >= 0) cols.push({ key: "dni", label: "DNI" });
+  cols.push({ key: "nombre", label: "Nombre completo" });
+  if (m.dateCol >= 0) cols.push({ key: "fecha", label: "Fecha" });
+  if (m.posicionCol >= 0) cols.push({ key: "posicion", label: "Posición" });
+  if (m.sedeCol >= 0) cols.push({ key: "sedeEntrada", label: "Sede entrada" });
+  cols.push({ key: "entrada", label: "Entrada", num: true });
+  if (m.sedeCol >= 0) cols.push({ key: "sedeSalida", label: "Sede salida" });
+  cols.push({ key: "salida", label: "Salida", num: true });
+  cols.push({ key: "total", label: "Horas trabajadas", num: true });
+  return cols;
+}
+
 export default function App() {
   const [sheet, setSheet] = useState<ParsedSheet | null>(null);
-  const [timeCol, setTimeCol] = useState(-1);
-  const [nameCol, setNameCol] = useState(-1);
+  const [mapping, setMapping] = useState<Mapping>(MAPPING_VACIO);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -42,8 +65,7 @@ export default function App() {
     try {
       const parsed = await readSheet(file);
       setSheet(parsed);
-      setTimeCol(parsed.suggestedTimeCol);
-      setNameCol(parsed.suggestedNameCol);
+      setMapping(parsed.suggested);
     } catch (e) {
       if (e instanceof ArchivoInvalidoError) setError(e.message);
       else {
@@ -75,25 +97,45 @@ export default function App() {
     setAjustando(false);
   };
 
+  const setRole = (role: keyof Mapping, val: number) =>
+    setMapping((m) => ({ ...m, [role]: val }));
+
   // Cálculo en vivo: cambia al instante si el usuario corrige las columnas.
-  const { rows, avisos, hayError } = useMemo(() => {
-    if (!sheet || timeCol < 0 || nameCol < 0) {
-      return { rows: [], avisos: [], hayError: false };
+  const { rows, avisos, hayError, columns } = useMemo(() => {
+    if (!sheet || mapping.timeCol < 0 || mapping.nameCol < 0) {
+      return { rows: [], avisos: [], hayError: false, columns: [] as ResultColumn[] };
     }
-    const punches = buildPunches(sheet.rows, timeCol, nameCol);
+    const punches = buildPunches(sheet.rows, mapping);
     const rows = processRecords(punches);
-    const avisos = validar(sheet, timeCol, nameCol, punches, rows);
+    const avisos = validar(sheet, mapping, punches, rows);
     const hayError = avisos.some((a) => a.level === "error");
-    return { rows, avisos, hayError };
-  }, [sheet, timeCol, nameCol]);
+    return { rows, avisos, hayError, columns: buildColumns(mapping) };
+  }, [sheet, mapping]);
+
+  const labelDe = (col: number) => sheet?.columns[col]?.label ?? "—";
+
+  // Render de un desplegable de mapeo (opcional incluye la opción "(ninguna)").
+  const campo = (id: string, etiqueta: string, role: keyof Mapping, opcional: boolean) => (
+    <div className="mapeo__campo">
+      <label htmlFor={id}>{etiqueta}</label>
+      <select id={id} value={mapping[role]} onChange={(e) => setRole(role, Number(e.target.value))}>
+        {opcional && <option value={-1}>(ninguna)</option>}
+        {sheet?.columns.map((c) => (
+          <option key={c.index} value={c.index}>
+            {opcionColumna(c)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
     <div className="page">
       <header className="header">
         <h1>Control de Horarios</h1>
         <p className="subtitulo">
-          Subí el Excel de fichajes del día y obtené la entrada, la salida y las horas
-          trabajadas de cada empleado.
+          Subí el Excel de fichajes y obtené, por empleado y por día, la entrada, la
+          salida, las horas trabajadas y desde qué sede fichó.
         </p>
       </header>
 
@@ -137,7 +179,7 @@ export default function App() {
                 <strong>Hacé clic para elegir</strong> o arrastrá el archivo acá
               </p>
               <p id="dropzone-ayuda" className="dropzone__formatos">
-                Formatos aceptados: .xlsx, .xls, .csv — una sola hoja
+                Formatos aceptados: .xlsx, .xls, .csv — una sola hoja · uno o varios días
               </p>
             </div>
 
@@ -174,14 +216,14 @@ export default function App() {
           <section aria-labelledby="resultado-titulo" className="card">
             <div className="resultado__cabecera">
               <h2 id="resultado-titulo">
-                Resultado <span className="contador">({rows.length} empleados)</span>
+                Resultado <span className="contador">({rows.length} filas)</span>
               </h2>
               <div className="acciones">
                 {!hayError && (
                   <button
                     type="button"
                     className="boton boton--primario"
-                    onClick={() => exportToExcel(rows)}
+                    onClick={() => exportToExcel(rows, columns)}
                     disabled={rows.length === 0}
                   >
                     Descargar Excel
@@ -207,51 +249,27 @@ export default function App() {
             )}
 
             {/* Escape hatch discreto: ajustar columnas solo si hace falta. */}
-            {sheet.columns.length > 0 && (
-              <p className="deteccion">
-                Columnas usadas — Nombre: <strong>{sheet.columns[nameCol]?.label}</strong>,
-                Hora: <strong>{sheet.columns[timeCol]?.label}</strong>.{" "}
-                <button
-                  type="button"
-                  className="link"
-                  aria-expanded={ajustando}
-                  onClick={() => setAjustando((v) => !v)}
-                >
-                  {ajustando ? "Ocultar ajuste" : "¿Columnas incorrectas? Ajustar"}
-                </button>
-              </p>
-            )}
+            <p className="deteccion">
+              Columnas usadas — Nombre: <strong>{labelDe(mapping.nameCol)}</strong>, Hora:{" "}
+              <strong>{labelDe(mapping.timeCol)}</strong>.{" "}
+              <button
+                type="button"
+                className="link"
+                aria-expanded={ajustando}
+                onClick={() => setAjustando((v) => !v)}
+              >
+                {ajustando ? "Ocultar ajuste" : "¿Columnas incorrectas? Ajustar"}
+              </button>
+            </p>
 
             {ajustando && (
               <div className="mapeo">
-                <div className="mapeo__campo">
-                  <label htmlFor="col-nombre">Columna de Nombre</label>
-                  <select
-                    id="col-nombre"
-                    value={nameCol}
-                    onChange={(e) => setNameCol(Number(e.target.value))}
-                  >
-                    {sheet.columns.map((c) => (
-                      <option key={c.index} value={c.index}>
-                        {opcionColumna(c)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mapeo__campo">
-                  <label htmlFor="col-hora">Columna de Hora</label>
-                  <select
-                    id="col-hora"
-                    value={timeCol}
-                    onChange={(e) => setTimeCol(Number(e.target.value))}
-                  >
-                    {sheet.columns.map((c) => (
-                      <option key={c.index} value={c.index}>
-                        {opcionColumna(c)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {campo("col-nombre", "Nombre *", "nameCol", false)}
+                {campo("col-hora", "Hora *", "timeCol", false)}
+                {campo("col-fecha", "Fecha (día)", "dateCol", true)}
+                {campo("col-dni", "DNI", "dniCol", true)}
+                {campo("col-sede", "Sede", "sedeCol", true)}
+                {campo("col-posicion", "Posición", "posicionCol", true)}
               </div>
             )}
 
@@ -262,23 +280,25 @@ export default function App() {
                 <div className="tabla-wrap">
                   <table className="tabla">
                     <caption className="sr-only">
-                      Entrada, salida y horas trabajadas por empleado
+                      Entrada, salida, horas trabajadas y sede por empleado y jornada
                     </caption>
                     <thead>
                       <tr>
-                        <th scope="col">Nombre completo</th>
-                        <th scope="col">Entrada</th>
-                        <th scope="col">Salida</th>
-                        <th scope="col">Horas trabajadas</th>
+                        {columns.map((c) => (
+                          <th key={c.key} scope="col">
+                            {c.label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((r) => (
-                        <tr key={r.nombre}>
-                          <td>{r.nombre}</td>
-                          <td className="num">{r.entrada || "—"}</td>
-                          <td className="num">{r.salida || "—"}</td>
-                          <td className="num">{r.total || "—"}</td>
+                        <tr key={`${r.dni}|${r.fecha}|${r.nombre}`}>
+                          {columns.map((c) => (
+                            <td key={c.key} className={c.num ? "num" : undefined}>
+                              {String(r[c.key] ?? "") || "—"}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>

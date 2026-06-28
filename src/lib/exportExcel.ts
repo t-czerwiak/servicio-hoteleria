@@ -1,19 +1,23 @@
 import * as XLSX from "xlsx";
-import type { EmployeeRow } from "../types";
+import type { EmployeeRow, ResultColumn } from "../types";
 
 /**
  * Genera y descarga un Excel con el resultado procesado.
- * Columnas: Nombre completo | Entrada | Salida | Horas trabajadas.
+ * Las columnas son las mismas que se muestran en pantalla (adaptativas según el
+ * archivo de origen): DNI, Fecha, Posición y Sedes aparecen solo si se detectaron.
  */
-export function exportToExcel(rows: EmployeeRow[], fileName = "horarios-procesados.xlsx"): void {
+export function exportToExcel(
+  rows: EmployeeRow[],
+  columns: ResultColumn[],
+  fileName = "horarios-procesados.xlsx"
+): void {
   const data = [
-    ["Nombre completo", "Entrada", "Salida", "Horas trabajadas"],
-    ...rows.map((r) => [r.nombre, r.entrada, r.salida, r.total]),
+    columns.map((c) => c.label),
+    ...rows.map((r) => columns.map((c) => String(r[c.key] ?? ""))),
   ];
 
   const sheet = XLSX.utils.aoa_to_sheet(data);
-  // Anchos de columna para que se lea cómodo.
-  sheet["!cols"] = [{ wch: 32 }, { wch: 12 }, { wch: 12 }, { wch: 16 }];
+  sheet["!cols"] = columns.map((c) => ({ wch: Math.max(c.label.length + 2, 14) }));
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, "Horarios");

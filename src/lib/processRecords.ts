@@ -2,16 +2,22 @@ import type { Punch, EmployeeRow } from "../types";
 import { formatMinutes } from "./parseExcel";
 
 interface Group {
+  dni: string;
   nombre: string;
-  min: number;
-  max: number;
+  fecha: string;
   count: number;
+  /** Fichaje más temprano (entrada) y más tardío (salida) de la jornada. */
+  entrada: Punch;
+  salida: Punch;
 }
 
 /**
  * Procesa los fichajes según la lógica del sistema de la máquina:
- *  - Se agrupa por nombre completo del empleado (del día).
+ *  - Se agrupa por empleado y por JORNADA (DNI + fecha; si no hay DNI, por nombre;
+ *    si no hay fecha, todo se trata como un único día).
  *  - Hora más temprana = ENTRADA. Hora más tardía = SALIDA.
+ *  - La sede/posición de la entrada salen de su fichaje; la sede de la salida, del suyo
+ *    (pueden ser distintas: alguien puede empezar en una sede y terminar en otra).
  *  - Los fichajes intermedios se ignoran.
  *  - Un solo fichaje = entrada registrada, salida sin registrar (celda en blanco).
  *  - Las horas totales solo se calculan cuando hay entrada Y salida.
@@ -21,19 +27,24 @@ export function processRecords(punches: Punch[]): EmployeeRow[] {
   const groups = new Map<string, Group>();
 
   for (const punch of punches) {
-    // Clave normalizada para agrupar; se conserva el nombre original para mostrar.
-    const key = punch.name.replace(/\s+/g, " ").trim().toLocaleLowerCase("es");
+    const nombre = punch.name.replace(/\s+/g, " ").trim();
+    // Identidad: DNI si lo hay, si no el nombre normalizado. Jornada = identidad + fecha.
+    const identidad = punch.dni ? `dni:${punch.dni}` : `nom:${nombre.toLocaleLowerCase("es")}`;
+    const key = `${identidad}|${punch.fecha}`;
+
     const existing = groups.get(key);
     if (existing) {
-      existing.min = Math.min(existing.min, punch.minutes);
-      existing.max = Math.max(existing.max, punch.minutes);
       existing.count += 1;
+      if (punch.minutes < existing.entrada.minutes) existing.entrada = punch;
+      if (punch.minutes > existing.salida.minutes) existing.salida = punch;
     } else {
       groups.set(key, {
-        nombre: punch.name.replace(/\s+/g, " ").trim(),
-        min: punch.minutes,
-        max: punch.minutes,
+        dni: punch.dni,
+        nombre,
+        fecha: punch.fecha,
         count: 1,
+        entrada: punch,
+        salida: punch,
       });
     }
   }
@@ -41,21 +52,21 @@ export function processRecords(punches: Punch[]): EmployeeRow[] {
   const rows: EmployeeRow[] = [];
   for (const g of groups.values()) {
     const tieneSalida = g.count >= 2;
-    const entrada = formatMinutes(g.min);
-    const salida = tieneSalida ? formatMinutes(g.max) : "";
-    // Total solo con entrada y salida presentes. Diferencia simple del día.
-    const total = tieneSalida ? formatMinutes(g.max - g.min) : "";
-
     rows.push({
+      dni: g.dni,
       nombre: g.nombre,
-      entrada,
-      salida,
-      total,
+      fecha: g.fecha,
+      posicion: g.entrada.posicion,
+      sedeEntrada: g.entrada.sede,
+      entrada: formatMinutes(g.entrada.minutes),
+      sedeSalida: tieneSalida ? g.salida.sede : "",
+      salida: tieneSalida ? formatMinutes(g.salida.minutes) : "",
+      total: tieneSalida ? formatMinutes(g.salida.minutes - g.entrada.minutes) : "",
       fichajes: g.count,
     });
   }
 
-  // Orden alfabético por nombre (español).
-  rows.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  // Orden por nombre y, dentro del mismo empleado, por fecha.
+  rows.sort((a, b) => a.nombre.localeCompare(b.nombre, "es") || a.fecha.localeCompare(b.fecha));
   return rows;
 }

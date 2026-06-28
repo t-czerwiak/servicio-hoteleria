@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { Punch, ParsedSheet, ColumnInfo } from "../types";
+import type { Punch, ParsedSheet, ColumnInfo, Mapping } from "../types";
 
 /** Error con mensaje claro y orientado al usuario (en español). */
 export class ArchivoInvalidoError extends Error {
@@ -75,6 +75,59 @@ export function formatMinutes(minutes: number): string {
 }
 
 /**
+ * Intenta extraer una FECHA de un valor de celda y la devuelve como "YYYY-MM-DD".
+ * Acepta objetos Date reales (descarta el epoch de Excel de las celdas de solo-hora),
+ * y texto "DD/MM/YYYY" (formato argentino) o "YYYY-MM-DD", con hora opcional detrás.
+ * Devuelve null si no es una fecha.
+ */
+export function parseDate(value: unknown): string | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return validYmd(value.getFullYear(), value.getMonth() + 1, value.getDate());
+  }
+  const text = String(value ?? "").trim();
+  if (text === "") return null;
+
+  // DD/MM/YYYY o DD-MM-YYYY o DD.MM.YYYY (día primero).
+  let m = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b/);
+  if (m) {
+    let y = parseInt(m[3], 10);
+    if (y < 100) y += 2000;
+    return validYmd(y, parseInt(m[2], 10), parseInt(m[1], 10));
+  }
+  // YYYY-MM-DD (ISO).
+  m = text.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})\b/);
+  if (m) {
+    return validYmd(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+  }
+  return null;
+}
+
+/** Valida y formatea año/mes/día; descarta fuera de rango y el epoch de Excel. */
+function validYmd(y: number, mo: number, d: number): string | null {
+  if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** Normaliza texto para comparar encabezados (minúsculas, sin acentos). */
+function normalizar(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
+/** Primer índice de columna cuyo encabezado contiene alguna de las palabras clave. */
+function findByHeader(columns: ColumnInfo[], keywords: string[]): number {
+  for (const col of columns) {
+    const label = normalizar(col.label);
+    if (label && keywords.some((k) => label.includes(k))) return col.index;
+  }
+  return -1;
+}
+
+/**
  * Lee un archivo Excel/CSV y devuelve las filas crudas + metadatos por columna +
  * una sugerencia automática de qué columna es la hora y cuál el nombre.
  * No procesa todavía: el usuario puede confirmar o corregir las columnas.
@@ -120,12 +173,20 @@ export async function readSheet(file: File): Promise<ParsedSheet> {
   const ncols = rows.reduce((max, r) => Math.max(max, r.length), 0);
   const timeCount = new Array(ncols).fill(0);
   const nameCount = new Array(ncols).fill(0);
+  const dateCount = new Array(ncols).fill(0);
   const timeDistinct: Set<number>[] = Array.from({ length: ncols }, () => new Set());
   const nameDistinct: Set<string>[] = Array.from({ length: ncols }, () => new Set());
+  const dateDistinct: Set<string>[] = Array.from({ length: ncols }, () => new Set());
 
   for (const row of rows) {
     for (let c = 0; c < ncols; c++) {
       const cell = row[c];
+      // La fecha se cuenta aparte (un Date a medianoche también es "hora 00:00").
+      const d = parseDate(cell);
+      if (d !== null) {
+        dateCount[c]++;
+        dateDistinct[c].add(d);
+      }
       const t = parseTime(cell);
       if (t !== null) {
         timeCount[c]++;
@@ -137,27 +198,20 @@ export async function readSheet(file: File): Promise<ParsedSheet> {
     }
   }
 
-  // Sugerencias automáticas.
-  const suggestedTimeCol = bestColumn(timeDistinct.map((s) => s.size), timeCount);
-  const suggestedNameCol = bestColumn(
-    nameDistinct.map((s, c) => (c === suggestedTimeCol ? 0 : s.size)),
-    nameCount
-  );
-
-  if (suggestedTimeCol === -1) {
+  // Hora: columna con más horas DISTINTAS (descarta la fecha constante).
+  const heurTimeCol = bestColumn(timeDistinct.map((s) => s.size), timeCount);
+  if (heurTimeCol === -1) {
     throw new ArchivoInvalidoError(
       "El archivo no contiene ninguna columna con horarios (HH:MM). No parece un registro de fichajes."
     );
   }
-  if (suggestedNameCol === -1) {
-    throw new ArchivoInvalidoError(
-      "El archivo no contiene ninguna columna con nombres. No parece un registro de fichajes."
-    );
-  }
+  const heurNameCol = bestColumn(
+    nameDistinct.map((s, c) => (c === heurTimeCol ? 0 : s.size)),
+    nameCount
+  );
 
-  // Detectar fila de encabezado para etiquetar columnas: la última fila no vacía
-  // anterior a la primera fila que tiene una hora en la columna de hora sugerida.
-  const firstDataRow = rows.findIndex((r) => parseTime(r[suggestedTimeCol]) !== null);
+  // Encabezado: última fila no vacía anterior a la primera con hora válida.
+  const firstDataRow = rows.findIndex((r) => parseTime(r[heurTimeCol]) !== null);
   let headerRow: unknown[] | null = null;
   for (let i = firstDataRow - 1; i >= 0; i--) {
     if (rows[i].some((c) => String(c ?? "").trim() !== "")) {
@@ -187,11 +241,38 @@ export async function readSheet(file: File): Promise<ParsedSheet> {
     });
   }
 
+  // Campos nuevos (DNI/Sede/Posición/Fecha): se detectan por NOMBRE de encabezado,
+  // porque Sede y Posición son ambas "texto con pocos valores" y la heurística no
+  // las distingue. Si no hay encabezado que coincida, quedan sin asignar (opcionales).
+  const timeCol = heurTimeCol;
+  const nameByHeader = findByHeader(columns, ["persona", "nombre", "empleado", "apellido", "agente", "trabajador"]);
+  const nameCol = nameByHeader >= 0 ? nameByHeader : heurNameCol;
+  if (nameCol === -1) {
+    throw new ArchivoInvalidoError(
+      "El archivo no contiene ninguna columna con nombres. No parece un registro de fichajes."
+    );
+  }
+
+  // Helper: match por encabezado, descartando colisiones con nombre/hora.
+  const opt = (keywords: string[]): number => {
+    const c = findByHeader(columns, keywords);
+    return c === nameCol || c === timeCol ? -1 : c;
+  };
+  const dniCol = opt(["idfichada", "dni", "documento", "legajo", "cuil", "cuit"]);
+  const sedeCol = opt(["registrador", "sede", "sucursal"]);
+  const posicionCol = opt(["sector", "puesto", "posicion", "area", "cargo"]);
+
+  // Fecha: primero por encabezado ("fecha"); si no, la columna con más fechas reales.
+  let dateCol = findByHeader(columns, ["fecha", "dia"]);
+  if (dateCol < 0 || dateCount[dateCol] === 0) {
+    dateCol = bestColumn(dateCount, dateDistinct.map((s) => s.size));
+  }
+  if (dateCol === nameCol) dateCol = -1;
+
   return {
     rows,
     columns,
-    suggestedTimeCol,
-    suggestedNameCol,
+    suggested: { nameCol, timeCol, dateCol, dniCol, sedeCol, posicionCol },
     totalRows: rows.length,
   };
 }
@@ -206,21 +287,25 @@ export function displayCell(value: unknown): string {
 }
 
 /**
- * Construye los fichajes a partir de las filas y las columnas elegidas.
+ * Construye los fichajes a partir de las filas y la asignación de columnas.
  * Las filas de encabezado/basura se descartan solas: su celda de hora no parsea.
  */
-export function buildPunches(
-  rows: unknown[][],
-  timeCol: number,
-  nameCol: number
-): Punch[] {
+export function buildPunches(rows: unknown[][], mapping: Mapping): Punch[] {
+  const { timeCol, nameCol, dateCol, dniCol, sedeCol, posicionCol } = mapping;
   const punches: Punch[] = [];
   for (const row of rows) {
     const minutes = parseTime(row[timeCol]);
     const name = String(row[nameCol] ?? "").trim();
     if (minutes === null || name === "") continue;
     if (!isNameLike(name)) continue;
-    punches.push({ name, minutes });
+    punches.push({
+      name,
+      minutes,
+      dni: dniCol >= 0 ? displayCell(row[dniCol]) : "",
+      fecha: dateCol >= 0 ? parseDate(row[dateCol]) ?? "" : "",
+      sede: sedeCol >= 0 ? displayCell(row[sedeCol]) : "",
+      posicion: posicionCol >= 0 ? displayCell(row[posicionCol]) : "",
+    });
   }
   return punches;
 }

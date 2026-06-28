@@ -1,9 +1,10 @@
 # Control de Horarios 🕒
 
-Aplicación web que procesa los **fichajes de empleados** de un día desde un archivo
-Excel/CSV y devuelve, por cada empleado, la **hora de entrada**, la **hora de salida** y
-las **horas trabajadas**. Todo el procesamiento ocurre **en el navegador**: no se sube nada
-a ningún servidor ni se guarda en ninguna base de datos.
+Aplicación web que procesa los **fichajes de empleados** desde un archivo Excel/CSV y
+devuelve, por cada empleado y por jornada, la **hora de entrada**, la **hora de salida**,
+las **horas trabajadas**, el **DNI**, la **posición** y desde qué **sede** fichó la entrada
+y la salida. Todo el procesamiento ocurre **en el navegador**: no se sube nada a ningún
+servidor ni se guarda en ninguna base de datos.
 
 > Proyecto de portfolio — React + TypeScript + Vite, desplegado en Firebase Hosting.
 
@@ -11,11 +12,15 @@ a ningún servidor ni se guarda en ninguna base de datos.
 
 ## ✨ Funcionalidades
 
-- Subida de un archivo a la vez (`.xlsx`, `.xls`, `.csv`, una sola hoja).
+- Subida de un archivo a la vez (`.xlsx`, `.xls`, `.csv`, una sola hoja, **uno o varios días**).
 - **Funciona con cualquier estructura**: detecta automáticamente las columnas de
-  nombre y hora (sin importar el orden, encabezados dispersos o filas de título), y
-  permite **confirmar o corregir** ese mapeo con dos desplegables. La tabla se
-  recalcula al instante.
+  nombre y hora por contenido, y **DNI / sede / posición / fecha** por nombre de
+  encabezado (sin importar el orden, encabezados dispersos o filas de título). Se puede
+  **confirmar o corregir** el mapeo de los 6 roles con desplegables; la tabla se recalcula
+  al instante. Las columnas del resultado son **adaptativas**: aparecen solo las que el
+  archivo realmente tiene.
+- **Multi-día**: agrupa por **DNI + fecha**, una fila por empleado por jornada. La entrada y
+  la salida pueden ser en **sedes distintas** (alguien empieza en una sede y termina en otra).
 - **Validación inteligente**: rechaza archivos sin nombre+horario, y advierte cuando
   el mapeo parece incorrecto (ej. se eligió una columna de sector o de fecha).
 - Procesamiento 100% en el cliente (uso libre, ilimitado, sin almacenamiento).
@@ -27,8 +32,11 @@ a ningún servidor ni se guarda en ninguna base de datos.
 - CSV/Excel simple (`Nombre`, `Hora`).
 - Reportes reales de fichadas tipo ZK ("Reporte de Eventos"): decenas de columnas,
   celdas combinadas, una columna de fecha constante y columnas señuelo (Evento, Sector).
-  Hay un ejemplo con datos ficticios en [`ejemplos/`](ejemplos/) (generado con
-  [`scripts/gen-example.mjs`](scripts/gen-example.mjs)).
+- Reporte **multi-día** con DNI, sede y posición (incluye un empleado que cambia de sede
+  entre entrada y salida, y un turno noche que cruza la medianoche).
+
+Hay ejemplos con datos ficticios en [`ejemplos/`](ejemplos/) (generados con los scripts de
+[`scripts/`](scripts/)).
 
 ## 🧠 Lógica de procesamiento
 
