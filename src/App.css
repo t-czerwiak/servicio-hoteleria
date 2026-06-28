@@ -1,5 +1,5 @@
 .page {
-  max-width: 880px;
+  max-width: 1150px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 3rem;
 }
@@ -30,6 +30,13 @@
   box-shadow: var(--sombra);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+/* La pantalla de subida no necesita todo el ancho; se mantiene centrada y compacta. */
+.card--subir {
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* Dropzone */
@@ -267,22 +274,22 @@
 .tabla {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .tabla th,
 .tabla td {
   text-align: left;
-  padding: 0.7rem 0.85rem;
+  padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--borde);
 }
 
 .tabla thead th {
   background: #f8fafc;
   color: var(--texto-suave);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   position: sticky;
   top: 0;
 }

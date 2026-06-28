@@ -49,13 +49,17 @@ export function processRecords(punches: Punch[]): EmployeeRow[] {
     }
   }
 
-  const rows: EmployeeRow[] = [];
-  for (const g of groups.values()) {
+  // Orden por nombre y, dentro del mismo empleado, por fecha cronológica (ISO).
+  const ordenados = [...groups.values()].sort(
+    (a, b) => a.nombre.localeCompare(b.nombre, "es") || a.fecha.localeCompare(b.fecha)
+  );
+
+  return ordenados.map((g) => {
     const tieneSalida = g.count >= 2;
-    rows.push({
+    return {
       dni: g.dni,
       nombre: g.nombre,
-      fecha: g.fecha,
+      fecha: formatFechaDisplay(g.fecha), // se muestra dd/mm/aaaa
       posicion: g.entrada.posicion,
       sedeEntrada: g.entrada.sede,
       entrada: formatMinutes(g.entrada.minutes),
@@ -63,10 +67,12 @@ export function processRecords(punches: Punch[]): EmployeeRow[] {
       salida: tieneSalida ? formatMinutes(g.salida.minutes) : "",
       total: tieneSalida ? formatMinutes(g.salida.minutes - g.entrada.minutes) : "",
       fichajes: g.count,
-    });
-  }
+    };
+  });
+}
 
-  // Orden por nombre y, dentro del mismo empleado, por fecha.
-  rows.sort((a, b) => a.nombre.localeCompare(b.nombre, "es") || a.fecha.localeCompare(b.fecha));
-  return rows;
+/** Convierte una fecha ISO "YYYY-MM-DD" a "DD/MM/YYYY" para mostrar. */
+function formatFechaDisplay(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }

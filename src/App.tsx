@@ -31,11 +31,11 @@ function buildColumns(m: Mapping): ResultColumn[] {
   cols.push({ key: "nombre", label: "Nombre completo" });
   if (m.dateCol >= 0) cols.push({ key: "fecha", label: "Fecha" });
   if (m.posicionCol >= 0) cols.push({ key: "posicion", label: "Posición" });
-  if (m.sedeCol >= 0) cols.push({ key: "sedeEntrada", label: "Sede entrada" });
   cols.push({ key: "entrada", label: "Entrada", num: true });
-  if (m.sedeCol >= 0) cols.push({ key: "sedeSalida", label: "Sede salida" });
   cols.push({ key: "salida", label: "Salida", num: true });
-  cols.push({ key: "total", label: "Horas trabajadas", num: true });
+  if (m.sedeCol >= 0) cols.push({ key: "sedeEntrada", label: "Sede entrada" });
+  if (m.sedeCol >= 0) cols.push({ key: "sedeSalida", label: "Sede salida" });
+  cols.push({ key: "total", label: "Horas totales", num: true });
   return cols;
 }
 
@@ -141,7 +141,7 @@ export default function App() {
 
       <main>
         {!sheet && (
-          <section aria-labelledby="subir-titulo" className="card">
+          <section aria-labelledby="subir-titulo" className="card card--subir">
             <h2 id="subir-titulo" className="sr-only">
               Subir archivo
             </h2>
