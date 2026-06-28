@@ -308,13 +308,6 @@ export default function App() {
           </section>
         )}
       </main>
-
-      <footer className="footer">
-        <p>
-          Procesamiento transitorio en el navegador · Hora más temprana = entrada · Hora más
-          tardía = salida · Los fichajes intermedios se ignoran.
-        </p>
-      </footer>
     </div>
   );
 }
