@@ -303,14 +303,6 @@
   white-space: nowrap;
 }
 
-.footer {
-  text-align: center;
-  color: #94a3b8;
-  font-size: 0.8rem;
-  line-height: 1.6;
-  margin-top: 1rem;
-}
-
 @media (max-width: 520px) {
   .resultado__cabecera {
     flex-direction: column;

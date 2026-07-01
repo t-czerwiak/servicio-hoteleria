@@ -1,5 +1,5 @@
 import type { ParsedSheet, Punch, EmployeeRow, Mapping } from "../types";
-import { parseTime, isNameLike } from "./parseExcel";
+import { isNameLike } from "./parseExcel";
 
 export interface Aviso {
   /** "error" bloquea el procesamiento; "warn" solo advierte. */
@@ -80,8 +80,8 @@ export function validar(
     });
   }
 
-  // Informativo: empleados con par incompleto (un solo fichaje -> salida en blanco).
-  const incompletos = rows.filter((r) => !r.salida).length;
+  // Informativo: jornadas con par incompleto (un solo fichaje -> salida en blanco).
+  const incompletos = rows.filter((r) => r.fichajes < 2).length;
   if (incompletos > 0) {
     avisos.push({
       level: "info",
@@ -90,12 +90,4 @@ export function validar(
   }
 
   return avisos;
-}
-
-/** Detecta valores de hora "raros" para un aviso opcional (no se usa para bloquear). */
-export function horasFueraDeRango(rows: unknown[][], timeCol: number): boolean {
-  return rows.some((r) => {
-    const t = parseTime(r[timeCol]);
-    return t !== null && (t < 0 || t > 1439);
-  });
 }

@@ -18,6 +18,6 @@ console.log(`Filas de resultado: ${rows.length}\n`);
 for (const r of rows) {
   console.log(
     `${(r.dni || "—").padEnd(9)} ${r.nombre.padEnd(22)} ${r.fecha || "—"} | ${r.posicion.padEnd(20)} | ` +
-    `ent ${r.entrada}@${(r.sedeEntrada || "—").padEnd(10)} | sal ${(r.salida || "—").padEnd(5)}@${(r.sedeSalida || "—").padEnd(10)} | tot ${r.total || "—"}`
+    `${r.entradaSalida.padEnd(15)} | sedes ${(r.sedeEntrada || "—").padEnd(10)} -> ${(r.sedeSalida || "—").padEnd(10)} | tot ${r.total || "—"}`
   );
 }

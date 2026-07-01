@@ -69,14 +69,12 @@ export interface EmployeeRow {
   fecha: string;
   /** Posición/puesto (tomada del fichaje de entrada), o "". */
   posicion: string;
+  /** "HH:MM - HH:MM" (entrada más temprana - salida más tardía); "—" en la salida si solo fichó una vez. */
+  entradaSalida: string;
   /** Sede del fichaje de entrada, o "". */
   sedeEntrada: string;
-  /** Hora de entrada (HH:MM) o cadena vacía si no corresponde. */
-  entrada: string;
   /** Sede del fichaje de salida, o "" (también vacía si solo fichó una vez). */
   sedeSalida: string;
-  /** Hora de salida (HH:MM) o cadena vacía si solo fichó una vez. */
-  salida: string;
   /** Horas trabajadas (HH:MM) o cadena vacía si falta entrada o salida. */
   total: string;
   /** Cantidad de fichajes registrados esa jornada (informativo). */

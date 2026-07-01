@@ -56,15 +56,15 @@ export function processRecords(punches: Punch[]): EmployeeRow[] {
 
   return ordenados.map((g) => {
     const tieneSalida = g.count >= 2;
+    const salida = tieneSalida ? formatMinutes(g.salida.minutes) : "—";
     return {
       dni: g.dni,
       nombre: g.nombre,
       fecha: formatFechaDisplay(g.fecha), // se muestra dd/mm/aaaa
       posicion: g.entrada.posicion,
+      entradaSalida: `${formatMinutes(g.entrada.minutes)} - ${salida}`,
       sedeEntrada: g.entrada.sede,
-      entrada: formatMinutes(g.entrada.minutes),
       sedeSalida: tieneSalida ? g.salida.sede : "",
-      salida: tieneSalida ? formatMinutes(g.salida.minutes) : "",
       total: tieneSalida ? formatMinutes(g.salida.minutes - g.entrada.minutes) : "",
       fichajes: g.count,
     };
