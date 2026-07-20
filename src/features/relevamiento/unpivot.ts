@@ -8,6 +8,9 @@ export class ArchivoInvalidoError extends Error {
   }
 }
 
+/** Estado de una habitación, derivado del COLOR de relleno de su celda en el Excel. */
+export type Estado = "Bien" | "Más o menos" | "Mal" | "No revisado";
+
 /** Una fila de salida: una habitación con todos sus campos ya "aplanados". */
 export interface RelevRow {
   /** Nombre de la pestaña de origen (ej. "Pintura general habt."). */
@@ -16,7 +19,7 @@ export interface RelevRow {
   piso: string;
   /** Número de habitación tal como aparece en el Excel. */
   habitacion: string;
-  /** Campo → valor (ej. Detalle, Auditada, Realizado, Observación, …). */
+  /** Campo → valor (ej. Estado, Detalle, Auditada, Realizado, Observación, …). */
   campos: Record<string, string>;
 }
 
@@ -35,8 +38,35 @@ export interface SheetResult {
 /** Columnas fijas que llevan siempre las listas. */
 export const COLUMNAS_BASE = ["Pestaña", "Piso", "Habitación"] as const;
 
-/** Orden preferido de las columnas de campo más comunes. El resto va detrás, alfabético. */
-const ORDEN_CAMPOS = ["Detalle", "Auditada", "Realizado", "Observación"];
+/** Orden preferido de las columnas de campo. Estado primero; el resto detrás, alfabético. */
+const ORDEN_CAMPOS = ["Estado", "Detalle", "Auditada", "Realizado", "Observación"];
+
+/**
+ * Clasifica el color de relleno de una celda en un estado.
+ * Verde = Bien, amarillo = Más o menos, rojo = Mal, gris/sin color = No revisado.
+ * Se clasifica por canales RGB (no por un hex exacto) para tolerar variantes de tono.
+ */
+function estadoDeFill(estilo: unknown): Estado {
+  const s = estilo as { patternType?: string; fgColor?: { rgb?: string } } | undefined;
+  const rgb = s?.patternType === "solid" ? s?.fgColor?.rgb : undefined;
+  if (!rgb) return "No revisado";
+  const hex = String(rgb).slice(-6);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "No revisado";
+  // Blanco/gris/negro (canales parejos): sin estado.
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 40) return "No revisado";
+  if (r > 150 && g < 110 && b < 110) return "Mal"; // rojo
+  if (g > 110 && r < 160 && b < 150) return "Bien"; // verde
+  if (r > 180 && g > 150) return "Más o menos"; // amarillo / ámbar
+  return "No revisado";
+}
+
+/** Piso a partir del número de habitación (todo menos los dos últimos dígitos). */
+function pisoDe(hab: string): string {
+  return hab.length > 2 ? hab.slice(0, hab.length - 2) : hab;
+}
 
 /**
  * ¿La celda parece un número de habitación? Aceptamos 3 dígitos (101–999) y
@@ -49,11 +79,6 @@ function esHabitacion(value: unknown): boolean {
   }
   const s = String(value).trim();
   return /^[1-9]\d{2,3}$/.test(s);
-}
-
-/** Piso a partir del número de habitación (todo menos los dos últimos dígitos). */
-function pisoDe(hab: string): string {
-  return hab.length > 2 ? hab.slice(0, hab.length - 2) : hab;
 }
 
 /** Formatea una fecha a "dd/mm/aaaa". */
@@ -106,17 +131,33 @@ function agregarCampo(campos: Record<string, string>, campo: string, valor: stri
   }
 }
 
-/** Todas las filas no vacías de una hoja como matriz (conserva Date). */
-function hojaAMatriz(ws: XLSX.WorkSheet): unknown[][] {
-  return XLSX.utils.sheet_to_json<unknown[]>(ws, {
-    header: 1,
-    raw: true,
-    defval: "",
-    blankrows: false,
-  });
+/**
+ * Lee una hoja como dos matrices alineadas a la grilla real (misma fila/columna):
+ * `valores` con el contenido de cada celda y `estados` con el estado (color) de cada
+ * celda. Mantener los índices reales permite mirar el color de la celda de cada
+ * habitación (que es donde el Excel marca verde/amarillo/rojo).
+ */
+function leerHoja(ws: XLSX.WorkSheet): { valores: unknown[][]; estados: Estado[][] } {
+  const ref = ws["!ref"];
+  if (!ref) return { valores: [], estados: [] };
+  const range = XLSX.utils.decode_range(ref);
+  const valores: unknown[][] = [];
+  const estados: Estado[][] = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const filaV: unknown[] = [];
+    const filaE: Estado[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      filaV.push(cell ? cell.v : "");
+      filaE.push(cell ? estadoDeFill(cell.s) : "No revisado");
+    }
+    valores.push(filaV);
+    estados.push(filaE);
+  }
+  return { valores, estados };
 }
 
-/** Índices de columna con número de habitación en una fila. */
+/** Índices de columna con número de habitación en una fila de valores. */
 function columnasHab(row: unknown[]): number[] {
   const cols: number[] = [];
   for (let c = 0; c < row.length; c++) if (esHabitacion(row[c])) cols.push(c);
@@ -147,36 +188,57 @@ function columnasDeFilas(filas: RelevRow[]): string[] {
 }
 
 /**
+ * La columna "Estado" solo tiene sentido si la pestaña usa colores. Si ninguna
+ * habitación tiene color (todas "No revisado"), se quita para no ensuciar la lista.
+ */
+function limpiarEstadoSiNoAplica(filas: RelevRow[]): void {
+  const hayColor = filas.some((f) => f.campos["Estado"] && f.campos["Estado"] !== "No revisado");
+  if (!hayColor) for (const f of filas) delete f.campos["Estado"];
+}
+
+/**
  * Despivota una hoja con formato de GRILLA horizontal: bloques de habitaciones
  * (una fila-cabecera con los números) y, debajo, filas de atributos hasta el
  * próximo bloque. La columna A puede traer la etiqueta del atributo (DETALLE,
- * AUDITADA, REALIZADO…) o no traerla (entonces el valor va a "Detalle").
+ * AUDITADA, REALIZADO…) o no traerla (entonces el valor va a "Detalle"). El estado
+ * (color) se toma de la celda del número de habitación.
  */
-function despivotarGrilla(pestana: string, rows: unknown[][], headerRows: number[]): SheetResult {
+function despivotarGrilla(
+  pestana: string,
+  valores: unknown[][],
+  estados: Estado[][],
+  headerRows: number[]
+): SheetResult {
   const filas: RelevRow[] = [];
 
   for (let b = 0; b < headerRows.length; b++) {
     const hr = headerRows[b];
-    const finBloque = b + 1 < headerRows.length ? headerRows[b + 1] : rows.length;
+    const finBloque = b + 1 < headerRows.length ? headerRows[b + 1] : valores.length;
 
     // Mapa columna → habitación para este bloque.
     const mapa: { col: number; hab: string }[] = [];
-    for (const c of columnasHab(rows[hr])) mapa.push({ col: c, hab: String(rows[hr][c]).trim() });
+    for (const c of columnasHab(valores[hr])) mapa.push({ col: c, hab: String(valores[hr][c]).trim() });
     const minCol = Math.min(...mapa.map((m) => m.col));
     // Si las habitaciones no arrancan en la col 0, la col 0 es la etiqueta.
     const labelCol = minCol >= 1 ? 0 : -1;
 
-    // Una fila por habitación del bloque (aunque quede sin datos).
+    // Una fila por habitación del bloque (aunque quede sin datos). El estado sale
+    // del color de la propia celda del número de habitación.
     const registros = new Map<string, RelevRow>();
-    for (const { hab } of mapa) {
-      const fila: RelevRow = { pestana, piso: pisoDe(hab), habitacion: hab, campos: {} };
+    for (const { col, hab } of mapa) {
+      const fila: RelevRow = {
+        pestana,
+        piso: pisoDe(hab),
+        habitacion: hab,
+        campos: { Estado: estados[hr]?.[col] ?? "No revisado" },
+      };
       registros.set(hab, fila);
       filas.push(fila);
     }
 
     // Filas de atributos del bloque.
     for (let r = hr + 1; r < finBloque; r++) {
-      const row = rows[r];
+      const row = valores[r];
       if (!row) continue;
       const etiquetaRaw = labelCol >= 0 ? celdaTexto(row[labelCol]) : "";
       const campo = etiquetaRaw ? normalizarEtiqueta(etiquetaRaw) : "Detalle";
@@ -186,6 +248,7 @@ function despivotarGrilla(pestana: string, rows: unknown[][], headerRows: number
     }
   }
 
+  limpiarEstadoSiNoAplica(filas);
   return { pestana, columnas: columnasDeFilas(filas), filas };
 }
 
@@ -193,32 +256,38 @@ function despivotarGrilla(pestana: string, rows: unknown[][], headerRows: number
  * Despivota una hoja VERTICAL (tipo "Generales"): la habitación está en la
  * columna A y el detalle en la B. Una fila del Excel = una habitación.
  */
-function despivotarVertical(pestana: string, rows: unknown[][]): SheetResult {
+function despivotarVertical(
+  pestana: string,
+  valores: unknown[][],
+  estados: Estado[][]
+): SheetResult {
   const filas: RelevRow[] = [];
-  for (const row of rows) {
+  for (let r = 0; r < valores.length; r++) {
+    const row = valores[r];
     if (!esHabitacion(row[0])) continue;
     const hab = String(row[0]).trim();
     const detalle = celdaTexto(row[1]);
-    const campos: Record<string, string> = {};
+    const campos: Record<string, string> = { Estado: estados[r]?.[0] ?? "No revisado" };
     if (detalle) campos["Detalle"] = detalle;
     filas.push({ pestana, piso: pisoDe(hab), habitacion: hab, campos });
   }
+  limpiarEstadoSiNoAplica(filas);
   return { pestana, columnas: columnasDeFilas(filas), filas };
 }
 
 /** Despivota una sola hoja, eligiendo el modo (grilla o vertical) automáticamente. */
 export function despivotarHoja(pestana: string, ws: XLSX.WorkSheet): SheetResult {
-  const rows = hojaAMatriz(ws);
+  const { valores, estados } = leerHoja(ws);
   // Fila-cabecera = fila con 3+ números de habitación (bloques horizontales).
   const headerRows: number[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (columnasHab(rows[i]).length >= 3) headerRows.push(i);
+  for (let i = 0; i < valores.length; i++) {
+    if (columnasHab(valores[i]).length >= 3) headerRows.push(i);
   }
-  if (headerRows.length > 0) return despivotarGrilla(pestana, rows, headerRows);
+  if (headerRows.length > 0) return despivotarGrilla(pestana, valores, estados, headerRows);
 
   // Sin bloques horizontales: ¿hay habitaciones en la columna A (vertical)?
-  const habsColA = rows.filter((r) => esHabitacion(r[0])).length;
-  if (habsColA >= 3) return despivotarVertical(pestana, rows);
+  const habsColA = valores.filter((r) => esHabitacion(r[0])).length;
+  if (habsColA >= 3) return despivotarVertical(pestana, valores, estados);
 
   // No se reconoció el formato: hoja sin habitaciones.
   return { pestana, columnas: [], filas: [] };
@@ -233,7 +302,8 @@ export async function despivotarArchivo(file: File): Promise<SheetResult[]> {
   const buffer = await file.arrayBuffer();
   let workbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(buffer, { type: "array", cellDates: true, codepage: 65001 });
+    // cellStyles: true → necesario para leer el color de relleno (el estado).
+    workbook = XLSX.read(buffer, { type: "array", cellDates: true, cellStyles: true, codepage: 65001 });
   } catch {
     throw new ArchivoInvalidoError(
       "No se pudo leer el archivo. Asegurate de que sea un Excel (.xlsx / .xls) válido."

@@ -67,12 +67,18 @@ Airtable necesita **una fila por registro**, así que la herramienta **despivota
 1. Subís el Excel (`.xlsx` / `.xls`) con una o varias pestañas.
 2. Por cada pestaña, detecta el formato (grilla horizontal o vertical) y genera **una fila
    por habitación**, con las columnas base `Pestaña | Piso | Habitación` más **solo los
-   campos que esa pestaña realmente usa** (Detalle, Auditada, Realizado, Observación… o
-   cualquier otra etiqueta que aparezca). Como **cada pestaña tiene un formato distinto**,
-   las columnas se calculan de los datos reales: **nunca hay columnas vacías**.
+   campos que esa pestaña realmente usa** (Estado, Detalle, Auditada, Realizado,
+   Observación… o cualquier otra etiqueta que aparezca). Como **cada pestaña tiene un
+   formato distinto**, las columnas se calculan de los datos reales: **nunca hay columnas
+   vacías**.
    - `Piso` se deriva del número de habitación (`101` → `1`, `1001` → `10`).
-   - Las fechas se formatean `dd/mm/aaaa`. Los datos van **en crudo**, sin clasificar.
-   - Se incluyen todas las habitaciones del bloque (para ver qué falta relevar).
+   - **`Estado`** se deriva del **color de relleno** de la celda de cada habitación en el
+     Excel: verde → `Bien`, amarillo → `Más o menos`, rojo → `Mal`, gris/sin color →
+     `No revisado`. Aparece solo en las pestañas que usan colores. En la vista previa se
+     muestra pintado; en el CSV va como **texto** (en Airtable podés convertirlo en un campo
+     "single select" con colores).
+   - Las fechas se formatean `dd/mm/aaaa`. Los demás datos van **en crudo**, sin clasificar.
+   - Se incluyen todas las habitaciones del bloque (para ver qué falta revisar).
 3. **Se ve y se descarga una pestaña a la vez**: elegís la pestaña en un selector, ves su
    vista previa y descargás su CSV individual. Opcionalmente, **Descargar todas (ZIP)** trae
    un CSV por pestaña, por separado, en un solo archivo

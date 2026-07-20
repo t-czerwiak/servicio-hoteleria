@@ -12,6 +12,21 @@ import {
 const EXTENSIONES_VALIDAS = [".xlsx", ".xls"];
 const MAX_PREVIEW = 60;
 
+/** Clase de color para el valor de la columna "Estado" (verde/amarillo/rojo/gris). */
+const CLASE_ESTADO: Record<string, string> = {
+  Bien: "est est--bien",
+  "Más o menos": "est est--mas",
+  Mal: "est est--mal",
+  "No revisado": "est est--no",
+};
+
+/** Clase CSS de una celda de la vista previa según su columna y valor. */
+function claseCelda(columna: string, valor: string): string | undefined {
+  if (columna === "Estado") return CLASE_ESTADO[valor] ?? undefined;
+  if (columna === "Piso" || columna === "Habitación") return "num";
+  return undefined;
+}
+
 /**
  * Herramienta "Convertidor Relevamiento → Airtable": toma el Excel de relevamiento
  * de habitaciones (una grilla por pestaña) y lo aplana en listas importables a
@@ -217,6 +232,19 @@ export default function RelevamientoTool() {
             Columnas de <strong>{actual.pestana}</strong>: {columnas.join(", ")}.
           </p>
 
+          {columnas.includes("Estado") && (
+            <p className="leyenda-estado">
+              Estado (según el color en el Excel):
+              <span className="est est--bien">Bien</span>
+              <span className="est est--mas">Más o menos</span>
+              <span className="est est--mal">Mal</span>
+              <span className="est est--no">No revisado</span>
+              <span className="leyenda-estado__nota">
+                — en el CSV va como texto (en Airtable podés hacerlo un campo con colores).
+              </span>
+            </p>
+          )}
+
           <div className="tabla-wrap">
             <table className="tabla">
               <caption className="sr-only">
@@ -234,11 +262,14 @@ export default function RelevamientoTool() {
               <tbody>
                 {actual.filas.slice(0, MAX_PREVIEW).map((fila, i) => (
                   <tr key={`${fila.habitacion}|${i}`}>
-                    {columnas.map((c) => (
-                      <td key={c} className={c === "Piso" || c === "Habitación" ? "num" : undefined}>
-                        {valorCelda(fila, c) || "—"}
-                      </td>
-                    ))}
+                    {columnas.map((c) => {
+                      const valor = valorCelda(fila, c);
+                      return (
+                        <td key={c} className={claseCelda(c, valor)}>
+                          {valor || "—"}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
