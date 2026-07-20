@@ -93,5 +93,5 @@ export async function descargarZipPorPestana(resultados: SheetResult[]): Promise
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  descargar(blob, "relevamiento-airtable-por-pestana.zip");
+  descargar(blob, "reportes-habitaciones-airtable-por-pestana.zip");
 }

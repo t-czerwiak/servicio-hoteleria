@@ -7,8 +7,8 @@ servidor ni se guarda en ninguna base de datos.
 La app agrupa las herramientas en **pestañas**:
 
 1. **Control de Horarios** — procesa fichajes de empleados desde Excel/CSV.
-2. **Convertidor Relevamiento → Airtable** — aplana un relevamiento de habitaciones a
-   listas importables a Airtable.
+2. **Convertidor de Reportes de Habitaciones → Airtable** — aplana un reporte de
+   habitaciones (relevamiento, mantenimiento, inventario…) a listas importables a Airtable.
 
 > React + TypeScript + Vite, desplegado en Firebase Hosting.
 
@@ -46,11 +46,11 @@ de salida. Por eso, para cada empleado del día:
 
 ---
 
-## 🏷️ Herramienta 2 — Convertidor Relevamiento → Airtable
+## 🏷️ Herramienta 2 — Convertidor de Reportes de Habitaciones → Airtable
 
-Toma el Excel de **relevamiento de habitaciones** (una pestaña por categoría: pintura, TV,
-colchón, cerraduras, etc.) y lo convierte en **listas planas, una fila por habitación**,
-listas para importar a Airtable.
+Toma un Excel de **reporte de habitaciones** (una pestaña por tema: pintura, TV, colchón,
+cerraduras, etc. — sea relevamiento, mantenimiento o inventario) y lo convierte en **listas
+planas, una fila por habitación**, listas para importar a Airtable.
 
 ### El problema que resuelve
 

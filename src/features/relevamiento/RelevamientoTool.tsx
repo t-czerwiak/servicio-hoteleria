@@ -92,7 +92,7 @@ export default function RelevamientoTool() {
   return (
     <>
       <p className="herramienta__intro">
-        Subí el Excel del relevamiento de habitaciones (una o varias pestañas). Cada pestaña
+        Subí el Excel del reporte de habitaciones (una o varias pestañas). Cada pestaña
         se convierte en una lista plana —una fila por habitación— y la ves y descargás por
         separado, con solo las columnas que esa pestaña realmente tiene.
       </p>

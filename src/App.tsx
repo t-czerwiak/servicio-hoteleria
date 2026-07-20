@@ -7,7 +7,7 @@ type Herramienta = "horarios" | "relevamiento";
 
 const TABS: { id: Herramienta; label: string }[] = [
   { id: "horarios", label: "Control de Horarios" },
-  { id: "relevamiento", label: "Convertidor Relevamiento → Airtable" },
+  { id: "relevamiento", label: "Convertidor de Reportes de Habitaciones → Airtable" },
 ];
 
 /**
@@ -23,7 +23,7 @@ export default function App() {
         <h1>Servicio Hotelería</h1>
         <p className="subtitulo">
           Herramientas para pasar datos de hotelería más fácil: procesar fichajes y
-          convertir relevamientos a listas para Airtable. Todo en tu navegador.
+          convertir reportes de habitaciones a listas para Airtable. Todo en tu navegador.
         </p>
       </header>
 
