@@ -1,9 +1,9 @@
 {
-  "name": "control-horarios",
+  "name": "servicio-hoteleria",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
-  "description": "App web para procesar fichajes de empleados desde Excel, 100% en el navegador.",
+  "description": "Herramientas web de hotelería: control de horarios (fichajes) y convertidor de relevamientos a listas para Airtable. 100% en el navegador.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -11,6 +11,7 @@
     "deploy": "npm run build && firebase deploy"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "xlsx": "^0.18.5"

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { EmployeeRow, ResultColumn } from "../types";
+import type { EmployeeRow, ResultColumn } from "./types";
 
 /**
  * Genera y descarga un Excel con el resultado procesado.

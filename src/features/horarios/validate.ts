@@ -1,4 +1,4 @@
-import type { ParsedSheet, Punch, EmployeeRow, Mapping } from "../types";
+import type { ParsedSheet, Punch, EmployeeRow, Mapping } from "./types";
 import { isNameLike } from "./parseExcel";
 
 export interface Aviso {

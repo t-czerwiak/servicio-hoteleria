@@ -24,6 +24,52 @@
   line-height: 1.5;
 }
 
+/* Pestañas de herramientas (Control de Horarios / Convertidor) */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  padding: 0.35rem;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: var(--radio);
+}
+
+.tab {
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover {
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.tab--activa,
+.tab--activa:hover {
+  background: var(--primario);
+  color: #fff;
+}
+
+/* Intro breve de cada herramienta, dentro del área de la pestaña. */
+.herramienta__intro {
+  margin: 0 auto 1.5rem;
+  max-width: 40rem;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 .card {
   background: var(--card);
   border-radius: var(--radio);

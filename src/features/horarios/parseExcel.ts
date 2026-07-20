@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { Punch, ParsedSheet, ColumnInfo, Mapping } from "../types";
+import type { Punch, ParsedSheet, ColumnInfo, Mapping } from "./types";
 
 /** Error con mensaje claro y orientado al usuario (en español). */
 export class ArchivoInvalidoError extends Error {

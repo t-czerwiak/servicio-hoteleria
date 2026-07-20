@@ -1,4 +1,4 @@
-import type { Punch, EmployeeRow } from "../types";
+import type { Punch, EmployeeRow } from "./types";
 import { formatMinutes } from "./parseExcel";
 
 interface Group {

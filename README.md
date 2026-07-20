@@ -1,47 +1,38 @@
-# Control de Horarios 🕒
+# Servicio Hotelería 🏨
 
-Aplicación web que procesa los **fichajes de empleados** desde un archivo Excel/CSV y
-devuelve, por cada empleado y por jornada, la **hora de entrada**, la **hora de salida**,
-las **horas trabajadas**, el **DNI**, la **posición** y desde qué **sede** fichó la entrada
-y la salida. Todo el procesamiento ocurre **en el navegador**: no se sube nada a ningún
+Conjunto de **herramientas web para hotelería** que ayudan a pasar datos de un formato a
+otro más fácil. Todo el procesamiento ocurre **en el navegador**: no se sube nada a ningún
 servidor ni se guarda en ninguna base de datos.
 
-> Proyecto de portfolio — React + TypeScript + Vite, desplegado en Firebase Hosting.
+La app agrupa las herramientas en **pestañas**:
 
-**🔗 App en vivo:** https://control-horarios-9cf4d.web.app
+1. **Control de Horarios** — procesa fichajes de empleados desde Excel/CSV.
+2. **Convertidor Relevamiento → Airtable** — aplana un relevamiento de habitaciones a
+   listas importables a Airtable.
 
-## ✨ Funcionalidades
+> React + TypeScript + Vite, desplegado en Firebase Hosting.
+
+**🔗 App en vivo:** https://servicio-hoteleria.web.app
+(también sigue disponible en https://control-horarios-9cf4d.web.app)
+
+---
+
+## 🕒 Herramienta 1 — Control de Horarios
+
+Procesa los **fichajes de empleados** desde un Excel/CSV y devuelve, por cada empleado y
+por jornada, la **hora de entrada**, la **salida**, las **horas trabajadas**, el **DNI**, la
+**posición** y desde qué **sede** fichó la entrada y la salida.
 
 - Subida de un archivo a la vez (`.xlsx`, `.xls`, `.csv`, una sola hoja, **uno o varios días**).
-- **Funciona con cualquier estructura**: detecta automáticamente las columnas de
-  nombre y hora por contenido, y **DNI / sede / posición / fecha** por nombre de
-  encabezado (sin importar el orden, encabezados dispersos o filas de título). Se puede
-  **confirmar o corregir** el mapeo de los 6 roles con desplegables; la tabla se recalcula
-  al instante. Las columnas del resultado son **adaptativas**: aparecen solo las que el
-  archivo realmente tiene.
-- **Multi-día**: agrupa por **DNI + fecha**, una fila por empleado por jornada. La entrada y
-  la salida pueden ser en **sedes distintas** (alguien empieza en una sede y termina en otra).
-- **Validación inteligente**: rechaza archivos sin nombre+horario, y advierte cuando
-  el mapeo parece incorrecto (ej. se eligió una columna de sector o de fecha).
-- Procesamiento 100% en el cliente (uso libre, ilimitado, sin almacenamiento).
-- Exportación del resultado a Excel.
-- Interfaz accesible (etiquetas ARIA, navegación por teclado, foco visible).
+- **Detecta las columnas automáticamente** (nombre y hora por contenido; DNI / sede /
+  posición / fecha por encabezado) y permite **corregir el mapeo** con desplegables.
+- **Multi-día**: agrupa por **DNI + fecha**; la entrada y la salida pueden ser en sedes distintas.
+- Exporta el resultado a Excel.
 
-### Formatos probados
+### Lógica de procesamiento
 
-- CSV/Excel simple (`Nombre`, `Hora`).
-- Reportes reales de fichadas tipo ZK ("Reporte de Eventos"): decenas de columnas,
-  celdas combinadas, una columna de fecha constante y columnas señuelo (Evento, Sector).
-- Reporte **multi-día** con DNI, sede y posición (incluye un empleado que cambia de sede
-  entre entrada y salida, y un turno noche que cruza la medianoche).
-
-Hay ejemplos con datos ficticios en [`ejemplos/`](ejemplos/) (generados con los scripts de
-[`scripts/`](scripts/)).
-
-## 🧠 Lógica de procesamiento
-
-La máquina de fichajes solo registra **cuándo se usó** (nombre + hora actual); no distingue
-entrada de salida. Por eso, para cada empleado del día:
+La máquina de fichajes solo registra **cuándo se usó** (nombre + hora); no distingue entrada
+de salida. Por eso, para cada empleado del día:
 
 | Situación | Entrada | Salida | Horas |
 | --- | --- | --- | --- |
@@ -51,12 +42,46 @@ entrada de salida. Por eso, para cada empleado del día:
 | **1 solo fichaje** | ✅ entrada | 🔲 en blanco | 🔲 en blanco |
 | **2 o más fichajes** | ✅ más temprana | ✅ más tardía | `salida − entrada` |
 
-- Las horas se muestran en formato **HH:MM (24 h)**.
-- **No se inventan ni completan datos faltantes.** Si falta entrada o salida, el total queda en blanco.
+**No se inventan ni completan datos faltantes.** Hay ejemplos ficticios en [`ejemplos/`](ejemplos/).
 
-> ⚠️ **Turnos nocturnos (cruce de medianoche):** como los archivos son de un único día,
-> un turno que entra a las 22:00 y sale a las 06:00 del día siguiente no puede resolverse
-> de forma fiable con la regla más-temprana/más-tardía. Queda pendiente para una mejora futura.
+---
+
+## 🏷️ Herramienta 2 — Convertidor Relevamiento → Airtable
+
+Toma el Excel de **relevamiento de habitaciones** (una pestaña por categoría: pintura, TV,
+colchón, cerraduras, etc.) y lo convierte en **listas planas, una fila por habitación**,
+listas para importar a Airtable.
+
+### El problema que resuelve
+
+En el Excel de origen los datos **no** son listas: cada pestaña es una **grilla**. Las
+habitaciones están en horizontal, en bloques de 9 por piso (101–109, 201–209, …), y debajo
+de cada bloque hay una o varias filas de atributos (a veces etiquetadas en la columna A con
+`DETALLE`, `AUDITADA`, `REALIZADO`, `OBSERVACION`…, a veces una sola fila de valor). La
+pestaña `Generales` es vertical (habitación en columna A, detalle en la B).
+
+Airtable necesita **una fila por registro**, así que la herramienta **despivota** esa grilla.
+
+### Cómo funciona
+
+1. Subís el Excel (`.xlsx` / `.xls`) con una o varias pestañas.
+2. Por cada pestaña, detecta el formato (grilla horizontal o vertical) y genera **una fila
+   por habitación**, con las columnas:
+   `Categoría | Piso | Habitación | Detalle | Auditada | Realizado | Observación` (+ cualquier
+   otra etiqueta que aparezca — **no se pierde ningún dato**).
+   - `Piso` se deriva del número de habitación (`101` → `1`, `1001` → `10`).
+   - Las fechas se formatean `dd/mm/aaaa`. Los datos van **en crudo**, sin clasificar.
+   - Se incluyen **todas** las habitaciones del bloque, aunque estén vacías (para ver qué
+     falta relevar en Airtable).
+3. Ves una **vista previa** y descargás en dos formatos:
+   - **CSV combinado** (`relevamiento-airtable.csv`): una sola tabla con la columna
+     `Categoría` → se importa como **una** tabla en Airtable.
+   - **ZIP por categoría** (`relevamiento-airtable-por-categoria.zip`): un CSV por pestaña →
+     importás cada categoría como **su propia** tabla.
+
+Los CSV son **UTF-8** (con BOM, para que Excel muestre bien las tildes/ñ).
+
+---
 
 ## 🚀 Desarrollo
 
@@ -71,15 +96,28 @@ npm run preview  # previsualizar el build
 
 ```bash
 npm run build
-npx firebase-tools deploy
+npx firebase-tools deploy --only hosting:servicio-hoteleria
 ```
 
-El sitio es 100% estático. Firebase se usa **solo para hosting**; no hay backend,
-ni Firestore, ni autenticación.
+El sitio es 100% estático. Firebase se usa **solo para hosting**; no hay backend, ni
+Firestore, ni autenticación.
+
+## 🗂️ Estructura
+
+```
+src/
+  App.tsx                     # shell con las pestañas + branding
+  features/
+    horarios/                 # Herramienta 1 (fichajes)
+      HorariosTool.tsx, parseExcel.ts, processRecords.ts, validate.ts, exportExcel.ts
+    relevamiento/             # Herramienta 2 (convertidor Airtable)
+      RelevamientoTool.tsx, unpivot.ts, exportAirtable.ts
+```
 
 ## 🛠️ Stack
 
 - React 18 + TypeScript
 - Vite
-- [SheetJS (`xlsx`)](https://sheetjs.com/) para leer y escribir Excel/CSV
+- [SheetJS (`xlsx`)](https://sheetjs.com/) para leer Excel/CSV
+- [JSZip](https://stuk.github.io/jszip/) para el ZIP por categoría
 - Firebase Hosting

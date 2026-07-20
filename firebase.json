@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "servicio-hoteleria",
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
