@@ -11,7 +11,7 @@ export class ArchivoInvalidoError extends Error {
 /** Una fila de salida: una habitación con todos sus campos ya "aplanados". */
 export interface RelevRow {
   /** Nombre de la pestaña de origen (ej. "Pintura general habt."). */
-  categoria: string;
+  pestana: string;
   /** Piso, derivado del número de habitación (101 → "1", 1001 → "10"). */
   piso: string;
   /** Número de habitación tal como aparece en el Excel. */
@@ -22,14 +22,18 @@ export interface RelevRow {
 
 /** Resultado de despivotar una pestaña. */
 export interface SheetResult {
-  categoria: string;
-  /** Columnas de campo detectadas, en orden (sin contar Categoría/Piso/Habitación). */
+  /** Nombre de la pestaña de origen. */
+  pestana: string;
+  /**
+   * Columnas de campo que esta pestaña realmente tiene con datos, en orden.
+   * Se calculan de los valores reales: nunca incluye columnas vacías.
+   */
   columnas: string[];
   filas: RelevRow[];
 }
 
 /** Columnas fijas que llevan siempre las listas. */
-export const COLUMNAS_BASE = ["Categoría", "Piso", "Habitación"] as const;
+export const COLUMNAS_BASE = ["Pestaña", "Piso", "Habitación"] as const;
 
 /** Orden preferido de las columnas de campo más comunes. El resto va detrás, alfabético. */
 const ORDEN_CAMPOS = ["Detalle", "Auditada", "Realizado", "Observación"];
@@ -119,15 +123,37 @@ function columnasHab(row: unknown[]): number[] {
   return cols;
 }
 
+/** Ordena un conjunto de columnas: primero las comunes, luego el resto alfabético. */
+function ordenarColumnas(set: Set<string>): string[] {
+  return [...set].sort((a, b) => {
+    const ia = ORDEN_CAMPOS.indexOf(a);
+    const ib = ORDEN_CAMPOS.indexOf(b);
+    if (ia !== -1 || ib !== -1) {
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    }
+    return a.localeCompare(b, "es");
+  });
+}
+
+/**
+ * Columnas de campo que aparecen con datos en las filas. Como `campos` solo
+ * contiene valores no vacíos, esto garantiza que NO haya columnas vacías: cada
+ * pestaña muestra únicamente las columnas que su formato realmente usó.
+ */
+function columnasDeFilas(filas: RelevRow[]): string[] {
+  const set = new Set<string>();
+  for (const f of filas) for (const k of Object.keys(f.campos)) set.add(k);
+  return ordenarColumnas(set);
+}
+
 /**
  * Despivota una hoja con formato de GRILLA horizontal: bloques de habitaciones
  * (una fila-cabecera con los números) y, debajo, filas de atributos hasta el
  * próximo bloque. La columna A puede traer la etiqueta del atributo (DETALLE,
  * AUDITADA, REALIZADO…) o no traerla (entonces el valor va a "Detalle").
  */
-function despivotarGrilla(categoria: string, rows: unknown[][], headerRows: number[]): SheetResult {
+function despivotarGrilla(pestana: string, rows: unknown[][], headerRows: number[]): SheetResult {
   const filas: RelevRow[] = [];
-  const columnasVistas = new Set<string>();
 
   for (let b = 0; b < headerRows.length; b++) {
     const hr = headerRows[b];
@@ -140,10 +166,10 @@ function despivotarGrilla(categoria: string, rows: unknown[][], headerRows: numb
     // Si las habitaciones no arrancan en la col 0, la col 0 es la etiqueta.
     const labelCol = minCol >= 1 ? 0 : -1;
 
-    // Una fila por habitación del bloque (aunque quede vacía).
+    // Una fila por habitación del bloque (aunque quede sin datos).
     const registros = new Map<string, RelevRow>();
     for (const { hab } of mapa) {
-      const fila: RelevRow = { categoria, piso: pisoDe(hab), habitacion: hab, campos: {} };
+      const fila: RelevRow = { pestana, piso: pisoDe(hab), habitacion: hab, campos: {} };
       registros.set(hab, fila);
       filas.push(fila);
     }
@@ -154,29 +180,20 @@ function despivotarGrilla(categoria: string, rows: unknown[][], headerRows: numb
       if (!row) continue;
       const etiquetaRaw = labelCol >= 0 ? celdaTexto(row[labelCol]) : "";
       const campo = etiquetaRaw ? normalizarEtiqueta(etiquetaRaw) : "Detalle";
-
-      let algunValor = false;
       for (const { col, hab } of mapa) {
-        const valor = celdaTexto(row[col]);
-        if (valor) {
-          agregarCampo(registros.get(hab)!.campos, campo, valor);
-          algunValor = true;
-        }
+        agregarCampo(registros.get(hab)!.campos, campo, celdaTexto(row[col]));
       }
-      // Fila sin etiqueta y sin ningún valor: separador, se ignora.
-      if (algunValor) columnasVistas.add(campo);
-      else if (etiquetaRaw) columnasVistas.add(campo);
     }
   }
 
-  return { categoria, columnas: ordenarColumnas(columnasVistas), filas };
+  return { pestana, columnas: columnasDeFilas(filas), filas };
 }
 
 /**
  * Despivota una hoja VERTICAL (tipo "Generales"): la habitación está en la
  * columna A y el detalle en la B. Una fila del Excel = una habitación.
  */
-function despivotarVertical(categoria: string, rows: unknown[][]): SheetResult {
+function despivotarVertical(pestana: string, rows: unknown[][]): SheetResult {
   const filas: RelevRow[] = [];
   for (const row of rows) {
     if (!esHabitacion(row[0])) continue;
@@ -184,52 +201,32 @@ function despivotarVertical(categoria: string, rows: unknown[][]): SheetResult {
     const detalle = celdaTexto(row[1]);
     const campos: Record<string, string> = {};
     if (detalle) campos["Detalle"] = detalle;
-    filas.push({ categoria, piso: pisoDe(hab), habitacion: hab, campos });
+    filas.push({ pestana, piso: pisoDe(hab), habitacion: hab, campos });
   }
-  return { categoria, columnas: ["Detalle"], filas };
+  return { pestana, columnas: columnasDeFilas(filas), filas };
 }
 
-/** Ordena las columnas de campo: primero las comunes, luego el resto alfabético. */
-function ordenarColumnas(set: Set<string>): string[] {
-  const cols = [...set];
-  return cols.sort((a, b) => {
-    const ia = ORDEN_CAMPOS.indexOf(a);
-    const ib = ORDEN_CAMPOS.indexOf(b);
-    if (ia !== -1 || ib !== -1) {
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-    }
-    return a.localeCompare(b, "es");
-  });
-}
-
-/** Une las columnas de campo de varias hojas en un único orden canónico. */
-export function columnasCombinadas(resultados: SheetResult[]): string[] {
-  const set = new Set<string>();
-  for (const r of resultados) for (const c of r.columnas) set.add(c);
-  return ordenarColumnas(set);
-}
-
-/** Despivota una sola hoja, eligiendo el modo (grilla u vertical) automáticamente. */
-export function despivotarHoja(categoria: string, ws: XLSX.WorkSheet): SheetResult {
+/** Despivota una sola hoja, eligiendo el modo (grilla o vertical) automáticamente. */
+export function despivotarHoja(pestana: string, ws: XLSX.WorkSheet): SheetResult {
   const rows = hojaAMatriz(ws);
   // Fila-cabecera = fila con 3+ números de habitación (bloques horizontales).
   const headerRows: number[] = [];
   for (let i = 0; i < rows.length; i++) {
     if (columnasHab(rows[i]).length >= 3) headerRows.push(i);
   }
-  if (headerRows.length > 0) return despivotarGrilla(categoria, rows, headerRows);
+  if (headerRows.length > 0) return despivotarGrilla(pestana, rows, headerRows);
 
   // Sin bloques horizontales: ¿hay habitaciones en la columna A (vertical)?
   const habsColA = rows.filter((r) => esHabitacion(r[0])).length;
-  if (habsColA >= 3) return despivotarVertical(categoria, rows);
+  if (habsColA >= 3) return despivotarVertical(pestana, rows);
 
-  // No se reconoció el formato: hoja vacía de habitaciones.
-  return { categoria, columnas: [], filas: [] };
+  // No se reconoció el formato: hoja sin habitaciones.
+  return { pestana, columnas: [], filas: [] };
 }
 
 /**
  * Despivota todo un archivo Excel: procesa cada pestaña y devuelve una lista por
- * categoría. Lanza ArchivoInvalidoError si el archivo es ilegible o no tiene
+ * pestaña. Lanza ArchivoInvalidoError si el archivo es ilegible o no tiene
  * ninguna habitación reconocible en ninguna pestaña.
  */
 export async function despivotarArchivo(file: File): Promise<SheetResult[]> {

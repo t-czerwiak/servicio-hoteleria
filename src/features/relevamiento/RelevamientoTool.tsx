@@ -3,22 +3,24 @@ import type { DragEvent } from "react";
 import { despivotarArchivo, ArchivoInvalidoError } from "./unpivot";
 import type { SheetResult } from "./unpivot";
 import {
-  descargarCombinado,
-  descargarZipPorCategoria,
-  columnasCombinadasCompletas,
-  filasCombinadas,
+  descargarPestana,
+  descargarZipPorPestana,
+  columnasDePestana,
+  valorCelda,
 } from "./exportAirtable";
 
 const EXTENSIONES_VALIDAS = [".xlsx", ".xls"];
-const MAX_PREVIEW = 50;
+const MAX_PREVIEW = 60;
 
 /**
  * Herramienta "Convertidor Relevamiento → Airtable": toma el Excel de relevamiento
  * de habitaciones (una grilla por pestaña) y lo aplana en listas importables a
- * Airtable, una fila por habitación. Todo en el navegador.
+ * Airtable, una fila por habitación. Cada pestaña se ve y se descarga por separado,
+ * con solo las columnas que esa pestaña realmente usa. Todo en el navegador.
  */
 export default function RelevamientoTool() {
   const [resultados, setResultados] = useState<SheetResult[] | null>(null);
+  const [seleccion, setSeleccion] = useState(0);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -29,6 +31,7 @@ export default function RelevamientoTool() {
   const procesarArchivo = useCallback(async (file: File) => {
     setError("");
     setResultados(null);
+    setSeleccion(0);
     setFileName(file.name);
 
     const nombre = file.name.toLowerCase();
@@ -67,6 +70,7 @@ export default function RelevamientoTool() {
 
   const reiniciar = () => {
     setResultados(null);
+    setSeleccion(0);
     setError("");
     setFileName("");
   };
@@ -75,25 +79,22 @@ export default function RelevamientoTool() {
     if (!resultados) return;
     setGenerandoZip(true);
     try {
-      await descargarZipPorCategoria(resultados);
+      await descargarZipPorPestana(resultados);
     } finally {
       setGenerandoZip(false);
     }
   };
 
-  // Vista previa de la tabla combinada (primeras filas).
-  const preview = useMemo(() => {
-    if (!resultados) return null;
-    const columnas = columnasCombinadasCompletas(resultados);
-    const filas = filasCombinadas(resultados);
-    return { columnas, filas, total: filas.length };
-  }, [resultados]);
+  // Pestaña actualmente seleccionada y sus columnas (solo las que tienen datos).
+  const actual = resultados?.[seleccion] ?? null;
+  const columnas = useMemo(() => (actual ? columnasDePestana(actual) : []), [actual]);
 
   return (
     <>
       <p className="herramienta__intro">
-        Subí el Excel del relevamiento de habitaciones (una o varias pestañas) y obtené
-        listas planas, una fila por habitación, listas para importar a Airtable.
+        Subí el Excel del relevamiento de habitaciones (una o varias pestañas). Cada pestaña
+        se convierte en una lista plana —una fila por habitación— y la ves y descargás por
+        separado, con solo las columnas que esa pestaña realmente tiene.
       </p>
 
       {!resultados && (
@@ -167,30 +168,21 @@ export default function RelevamientoTool() {
         )}
       </div>
 
-      {resultados && preview && !cargando && (
+      {resultados && actual && !cargando && (
         <section aria-labelledby="resultado-rel-titulo" className="card">
           <div className="resultado__cabecera">
             <h2 id="resultado-rel-titulo">
-              Resultado{" "}
-              <span className="contador">
-                ({resultados.length} categorías · {preview.total} habitaciones)
-              </span>
+              {resultados.length} pestaña{resultados.length !== 1 ? "s" : ""} detectada
+              {resultados.length !== 1 ? "s" : ""}
             </h2>
             <div className="acciones">
-              <button
-                type="button"
-                className="boton boton--primario"
-                onClick={() => descargarCombinado(resultados)}
-              >
-                Descargar CSV combinado
-              </button>
               <button
                 type="button"
                 className="boton boton--secundario"
                 onClick={descargarZip}
                 disabled={generandoZip}
               >
-                {generandoZip ? "Generando ZIP…" : "Descargar ZIP por categoría"}
+                {generandoZip ? "Generando ZIP…" : "Descargar todas (ZIP)"}
               </button>
               <button type="button" className="boton boton--secundario" onClick={reiniciar}>
                 Procesar otro archivo
@@ -198,28 +190,41 @@ export default function RelevamientoTool() {
             </div>
           </div>
 
-          <ul className="avisos">
-            <li className="aviso aviso--info">
-              El <strong>CSV combinado</strong> es una sola tabla con la columna
-              «Categoría»: importalo como una tabla en Airtable. El{" "}
-              <strong>ZIP por categoría</strong> trae un CSV por pestaña, para importar
-              cada categoría como su propia tabla.
-            </li>
-          </ul>
+          {/* Selector de pestaña: se ve y se descarga una por una. */}
+          <div className="selector-pestana">
+            <label htmlFor="sel-pestana">Pestaña</label>
+            <select
+              id="sel-pestana"
+              value={seleccion}
+              onChange={(e) => setSeleccion(Number(e.target.value))}
+            >
+              {resultados.map((r, i) => (
+                <option key={r.pestana + i} value={i}>
+                  {r.pestana} ({r.filas.length} hab.)
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="boton boton--primario"
+              onClick={() => descargarPestana(actual)}
+            >
+              Descargar esta pestaña (CSV)
+            </button>
+          </div>
 
           <p className="deteccion">
-            Categorías detectadas:{" "}
-            <strong>{resultados.map((r) => r.categoria).join(", ")}</strong>.
+            Columnas de <strong>{actual.pestana}</strong>: {columnas.join(", ")}.
           </p>
 
           <div className="tabla-wrap">
             <table className="tabla">
               <caption className="sr-only">
-                Vista previa de la lista combinada, una fila por habitación
+                Vista previa de la pestaña {actual.pestana}, una fila por habitación
               </caption>
               <thead>
                 <tr>
-                  {preview.columnas.map((c) => (
+                  {columnas.map((c) => (
                     <th key={c} scope="col">
                       {c}
                     </th>
@@ -227,33 +232,23 @@ export default function RelevamientoTool() {
                 </tr>
               </thead>
               <tbody>
-                {preview.filas.slice(0, MAX_PREVIEW).map((fila, i) => (
-                  <tr key={`${fila.categoria}|${fila.habitacion}|${i}`}>
-                    {preview.columnas.map((c) => {
-                      const valor =
-                        c === "Categoría"
-                          ? fila.categoria
-                          : c === "Piso"
-                          ? fila.piso
-                          : c === "Habitación"
-                          ? fila.habitacion
-                          : fila.campos[c] ?? "";
-                      return (
-                        <td key={c} className={c === "Piso" || c === "Habitación" ? "num" : undefined}>
-                          {valor || "—"}
-                        </td>
-                      );
-                    })}
+                {actual.filas.slice(0, MAX_PREVIEW).map((fila, i) => (
+                  <tr key={`${fila.habitacion}|${i}`}>
+                    {columnas.map((c) => (
+                      <td key={c} className={c === "Piso" || c === "Habitación" ? "num" : undefined}>
+                        {valorCelda(fila, c) || "—"}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {preview.total > MAX_PREVIEW && (
+          {actual.filas.length > MAX_PREVIEW && (
             <p className="info-card">
-              Mostrando las primeras {MAX_PREVIEW} de {preview.total} filas. La descarga
-              incluye todas.
+              Mostrando las primeras {MAX_PREVIEW} de {actual.filas.length} filas. La
+              descarga incluye todas.
             </p>
           )}
         </section>

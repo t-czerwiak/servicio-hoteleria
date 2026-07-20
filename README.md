@@ -66,20 +66,20 @@ Airtable necesita **una fila por registro**, así que la herramienta **despivota
 
 1. Subís el Excel (`.xlsx` / `.xls`) con una o varias pestañas.
 2. Por cada pestaña, detecta el formato (grilla horizontal o vertical) y genera **una fila
-   por habitación**, con las columnas:
-   `Categoría | Piso | Habitación | Detalle | Auditada | Realizado | Observación` (+ cualquier
-   otra etiqueta que aparezca — **no se pierde ningún dato**).
+   por habitación**, con las columnas base `Pestaña | Piso | Habitación` más **solo los
+   campos que esa pestaña realmente usa** (Detalle, Auditada, Realizado, Observación… o
+   cualquier otra etiqueta que aparezca). Como **cada pestaña tiene un formato distinto**,
+   las columnas se calculan de los datos reales: **nunca hay columnas vacías**.
    - `Piso` se deriva del número de habitación (`101` → `1`, `1001` → `10`).
    - Las fechas se formatean `dd/mm/aaaa`. Los datos van **en crudo**, sin clasificar.
-   - Se incluyen **todas** las habitaciones del bloque, aunque estén vacías (para ver qué
-     falta relevar en Airtable).
-3. Ves una **vista previa** y descargás en dos formatos:
-   - **CSV combinado** (`relevamiento-airtable.csv`): una sola tabla con la columna
-     `Categoría` → se importa como **una** tabla en Airtable.
-   - **ZIP por categoría** (`relevamiento-airtable-por-categoria.zip`): un CSV por pestaña →
-     importás cada categoría como **su propia** tabla.
+   - Se incluyen todas las habitaciones del bloque (para ver qué falta relevar).
+3. **Se ve y se descarga una pestaña a la vez**: elegís la pestaña en un selector, ves su
+   vista previa y descargás su CSV individual. Opcionalmente, **Descargar todas (ZIP)** trae
+   un CSV por pestaña, por separado, en un solo archivo
+   (`relevamiento-airtable-por-pestana.zip`).
 
-Los CSV son **UTF-8** (con BOM, para que Excel muestre bien las tildes/ñ).
+Los CSV son **UTF-8** (con BOM, para que Excel muestre bien las tildes/ñ) y se importan
+como una tabla por pestaña en Airtable.
 
 ---
 

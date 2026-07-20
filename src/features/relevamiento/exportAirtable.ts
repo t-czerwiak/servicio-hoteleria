@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { COLUMNAS_BASE, columnasCombinadas } from "./unpivot";
+import { COLUMNAS_BASE } from "./unpivot";
 import type { RelevRow, SheetResult } from "./unpivot";
 
 // BOM UTF-8: hace que Excel abra los CSV con tildes/ñ correctamente. Airtable
@@ -15,10 +15,10 @@ function escaparCSV(valor: string): string {
 }
 
 /** Valor de una columna para una fila (columnas base + campos despivotados). */
-function valorCelda(fila: RelevRow, columna: string): string {
+export function valorCelda(fila: RelevRow, columna: string): string {
   switch (columna) {
-    case "Categoría":
-      return fila.categoria;
+    case "Pestaña":
+      return fila.pestana;
     case "Piso":
       return fila.piso;
     case "Habitación":
@@ -26,6 +26,11 @@ function valorCelda(fila: RelevRow, columna: string): string {
     default:
       return fila.campos[columna] ?? "";
   }
+}
+
+/** Columnas completas de una pestaña: base + solo sus campos con datos. */
+export function columnasDePestana(res: SheetResult): string[] {
+  return [...COLUMNAS_BASE, ...res.columnas];
 }
 
 /** Genera el texto CSV a partir de columnas y filas. */
@@ -49,50 +54,38 @@ function descargar(blob: Blob, nombre: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Nombre de archivo seguro a partir de una categoría (para los CSV del ZIP). */
-function nombreArchivo(categoria: string): string {
-  const limpio = categoria
+/** Nombre de archivo seguro a partir del nombre de la pestaña. */
+function nombreArchivo(pestana: string): string {
+  const limpio = pestana
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
-  return `${limpio || "categoria"}.csv`;
-}
-
-/** Columnas completas (base + campos) para la TABLA COMBINADA. */
-export function columnasCombinadasCompletas(resultados: SheetResult[]): string[] {
-  return [...COLUMNAS_BASE, ...columnasCombinadas(resultados)];
-}
-
-/** Todas las filas de todas las categorías, en orden. */
-export function filasCombinadas(resultados: SheetResult[]): RelevRow[] {
-  return resultados.flatMap((r) => r.filas);
+  return `${limpio || "pestana"}.csv`;
 }
 
 /**
- * Descarga UN CSV con todas las categorías juntas (columna "Categoría").
- * Ideal para importar como una sola tabla en Airtable.
+ * Descarga el CSV de UNA sola pestaña, con solo sus columnas con datos.
+ * Ideal para importar esa pestaña como una tabla en Airtable.
  */
-export function descargarCombinado(resultados: SheetResult[]): void {
-  const columnas = columnasCombinadasCompletas(resultados);
-  const csv = construirCSV(columnas, filasCombinadas(resultados));
-  descargar(new Blob([csv], { type: "text/csv;charset=utf-8" }), "relevamiento-airtable.csv");
+export function descargarPestana(res: SheetResult): void {
+  const csv = construirCSV(columnasDePestana(res), res.filas);
+  descargar(new Blob([csv], { type: "text/csv;charset=utf-8" }), nombreArchivo(res.pestana));
 }
 
 /**
- * Descarga un ZIP con un CSV por categoría (pestaña), para importar cada uno
- * como su propia tabla en Airtable.
+ * Descarga un ZIP con un CSV por pestaña (cada uno con solo sus columnas con
+ * datos), para tener todas las listas por separado en un solo archivo.
  */
-export async function descargarZipPorCategoria(resultados: SheetResult[]): Promise<void> {
+export async function descargarZipPorPestana(resultados: SheetResult[]): Promise<void> {
   const zip = new JSZip();
   const usados = new Map<string, number>();
 
   for (const res of resultados) {
-    const columnas = [...COLUMNAS_BASE, ...res.columnas];
-    const csv = construirCSV(columnas, res.filas);
-    // Evita colisiones si dos categorías generan el mismo nombre de archivo.
-    let nombre = nombreArchivo(res.categoria);
+    const csv = construirCSV(columnasDePestana(res), res.filas);
+    // Evita colisiones si dos pestañas generan el mismo nombre de archivo.
+    let nombre = nombreArchivo(res.pestana);
     const n = usados.get(nombre) ?? 0;
     usados.set(nombre, n + 1);
     if (n > 0) nombre = nombre.replace(/\.csv$/, `-${n + 1}.csv`);
@@ -100,5 +93,5 @@ export async function descargarZipPorCategoria(resultados: SheetResult[]): Promi
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  descargar(blob, "relevamiento-airtable-por-categoria.zip");
+  descargar(blob, "relevamiento-airtable-por-pestana.zip");
 }
