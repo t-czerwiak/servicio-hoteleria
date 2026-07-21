@@ -41,6 +41,7 @@ export default function RelevamientoTool() {
   const [cargando, setCargando] = useState(false);
   const [arrastrando, setArrastrando] = useState(false);
   const [generandoZip, setGenerandoZip] = useState(false);
+  const [verTodas, setVerTodas] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const procesarArchivo = useCallback(async (file: File) => {
@@ -215,7 +216,7 @@ export default function RelevamientoTool() {
             >
               {resultados.map((r, i) => (
                 <option key={r.pestana + i} value={i}>
-                  {r.pestana} ({r.filas.length} hab.)
+                  {i + 1}. {r.pestana} ({r.filas.length} hab.)
                 </option>
               ))}
             </select>
@@ -260,7 +261,7 @@ export default function RelevamientoTool() {
                 </tr>
               </thead>
               <tbody>
-                {actual.filas.slice(0, MAX_PREVIEW).map((fila, i) => (
+                {(verTodas ? actual.filas : actual.filas.slice(0, MAX_PREVIEW)).map((fila, i) => (
                   <tr key={`${fila.habitacion}|${i}`}>
                     {columnas.map((c) => {
                       const valor = valorCelda(fila, c);
@@ -278,8 +279,12 @@ export default function RelevamientoTool() {
 
           {actual.filas.length > MAX_PREVIEW && (
             <p className="info-card">
-              Mostrando las primeras {MAX_PREVIEW} de {actual.filas.length} filas. La
-              descarga incluye todas.
+              {verTodas
+                ? `Mostrando las ${actual.filas.length} filas.`
+                : `Mostrando las primeras ${MAX_PREVIEW} de ${actual.filas.length} filas.`}{" "}
+              <button type="button" className="link" onClick={() => setVerTodas((v) => !v)}>
+                {verTodas ? "Ver menos" : `Ver todas las ${actual.filas.length} filas`}
+              </button>
             </p>
           )}
         </section>

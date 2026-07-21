@@ -176,6 +176,18 @@ function normalizarEtiqueta(raw: string): string {
   return limpio.charAt(0).toUpperCase() + limpio.slice(1).toLowerCase();
 }
 
+/**
+ * Nombre del campo para los valores SIN etiqueta de una pestaña. Normalmente "Detalle",
+ * pero en "Cambio Cerradura Hab" los valores son fechas de cambio → "Fecha cambio".
+ */
+function campoPorDefecto(pestana: string): string {
+  const s = pestana
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  return s.includes("cambio cerradura") ? "Fecha cambio" : "Detalle";
+}
+
 /** Agrega un valor a un campo, uniendo (sin duplicar) si ya había algo cargado. */
 function agregarCampo(campos: Record<string, string>, campo: string, valor: string): void {
   if (!valor) return;
@@ -317,6 +329,7 @@ function despivotarGrilla(
   cabeceras: Cabecera[]
 ): SheetResult {
   const mapa = new Map<number, RelevRow>();
+  const campoDefault = campoPorDefecto(pestana);
 
   const obtener = (room: number): RelevRow => {
     let fila = mapa.get(room);
@@ -356,7 +369,7 @@ function despivotarGrilla(
       const row = valores[r];
       if (!row) continue;
       const etiquetaRaw = labelCol >= 0 ? celdaTexto(row[labelCol]) : "";
-      const campo = etiquetaRaw ? normalizarEtiqueta(etiquetaRaw) : "Detalle";
+      const campo = etiquetaRaw ? normalizarEtiqueta(etiquetaRaw) : campoDefault;
       for (let idx = 1; idx <= nIdx; idx++) {
         const col = offset + idx;
         if (col < 0) continue;
