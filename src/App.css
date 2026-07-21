@@ -405,6 +405,7 @@ td.est {
 /* Tabla */
 .tabla-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tabla {
@@ -440,9 +441,27 @@ td.est {
 }
 
 @media (max-width: 520px) {
+  .page {
+    padding: 1.5rem 0.85rem 2.5rem;
+  }
+  .header {
+    margin-bottom: 1.5rem;
+  }
+  .card {
+    padding: 1.15rem 1rem;
+  }
+
+  /* Pestañas apiladas a ancho completo. */
+  .tabs {
+    flex-direction: column;
+  }
+  .tab {
+    min-width: 0;
+  }
+
   .resultado__cabecera {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
   .acciones {
     width: 100%;
@@ -452,5 +471,26 @@ td.est {
   }
   .mapeo {
     grid-template-columns: 1fr;
+  }
+
+  /* Selector de pestaña: etiqueta, desplegable y botón apilados a ancho completo. */
+  .selector-pestana {
+    padding: 0.85rem;
+    align-items: stretch;
+  }
+  .selector-pestana select,
+  .selector-pestana .boton {
+    flex-basis: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Tabla más compacta para que entren más columnas antes de tener que scrollear. */
+  .tabla {
+    font-size: 0.8rem;
+  }
+  .tabla th,
+  .tabla td {
+    padding: 0.45rem 0.5rem;
   }
 }
