@@ -42,6 +42,62 @@ export const COLUMNAS_BASE = ["Pestaña", "Piso", "Habitación"] as const;
 const ORDEN_CAMPOS = ["Estado", "Detalle", "Auditada", "Realizado", "Observación"];
 
 /**
+ * Grilla CANÓNICA del hotel: cuántas habitaciones tiene cada piso.
+ * Se dedujo del propio archivo (los índices que aparecen en todas las pestañas):
+ * pisos 1–8 tienen X01–X09, el piso 9 tiene 901–907 y el piso 10 tiene 1001–1004.
+ * Total = 8·9 + 7 + 4 = 83 habitaciones. Todas las listas se normalizan a esta grilla,
+ * lo que corrige typos, rellena faltantes, descarta números sueltos y evita duplicados.
+ */
+const PISOS: Record<number, number> = { 1: 9, 2: 9, 3: 9, 4: 9, 5: 9, 6: 9, 7: 9, 8: 9, 9: 7, 10: 4 };
+
+/** Número de habitación a partir de piso + índice (piso 10 → 1001…). */
+function numeroHab(piso: number, idx: number): number {
+  return piso === 10 ? 1000 + idx : piso * 100 + idx;
+}
+
+/** Piso de un número de habitación (1001 → 10, 305 → 3). */
+function pisoDeNum(n: number): number {
+  return n >= 1000 ? 10 : Math.floor(n / 100);
+}
+
+/** Índice dentro del piso (1001 → 1, 305 → 5). */
+function idxDeNum(n: number): number {
+  return n >= 1000 ? n - 1000 : n % 100;
+}
+
+/** ¿El número corresponde a una habitación real de la grilla canónica? */
+function esCanonica(n: number): boolean {
+  const piso = pisoDeNum(n);
+  const idx = idxDeNum(n);
+  return piso in PISOS && idx >= 1 && idx <= PISOS[piso];
+}
+
+/** Lista de todas las habitaciones canónicas, en orden numérico (101…1004). */
+function habitacionesCanonicas(): number[] {
+  const rooms: number[] = [];
+  for (const piso of Object.keys(PISOS).map(Number)) {
+    for (let idx = 1; idx <= PISOS[piso]; idx++) rooms.push(numeroHab(piso, idx));
+  }
+  return rooms.sort((a, b) => a - b);
+}
+
+/** Valor más frecuente de una lista (para inferir piso y offset de un bloque). */
+function moda(xs: number[]): number {
+  const cuenta = new Map<number, number>();
+  let mejor = xs[0];
+  let mejorN = 0;
+  for (const x of xs) {
+    const n = (cuenta.get(x) ?? 0) + 1;
+    cuenta.set(x, n);
+    if (n > mejorN) {
+      mejorN = n;
+      mejor = x;
+    }
+  }
+  return mejor;
+}
+
+/**
  * Clasifica el color de relleno de una celda en un estado.
  * Verde = Bien, amarillo = Más o menos, rojo = Mal, gris/sin color = No revisado.
  * Se clasifica por canales RGB (no por un hex exacto) para tolerar variantes de tono.
@@ -63,11 +119,6 @@ function estadoDeFill(estilo: unknown): Estado {
   return "No revisado";
 }
 
-/** Piso a partir del número de habitación (todo menos los dos últimos dígitos). */
-function pisoDe(hab: string): string {
-  return hab.length > 2 ? hab.slice(0, hab.length - 2) : hab;
-}
-
 /**
  * ¿La celda parece un número de habitación? Aceptamos 3 dígitos (101–999) y
  * 4 dígitos para el piso 10 (1001–1099). Descarta 2 dígitos (conteos como "10").
@@ -79,6 +130,11 @@ function esHabitacion(value: unknown): boolean {
   }
   const s = String(value).trim();
   return /^[1-9]\d{2,3}$/.test(s);
+}
+
+/** Número de una celda-habitación (asume que esHabitacion(value) es true). */
+function numDeCelda(value: unknown): number {
+  return typeof value === "number" ? Math.trunc(value) : parseInt(String(value).trim(), 10);
 }
 
 /** Formatea una fecha a "dd/mm/aaaa". */
@@ -157,11 +213,41 @@ function leerHoja(ws: XLSX.WorkSheet): { valores: unknown[][]; estados: Estado[]
   return { valores, estados };
 }
 
-/** Índices de columna con número de habitación en una fila de valores. */
-function columnasHab(row: unknown[]): number[] {
-  const cols: number[] = [];
-  for (let c = 0; c < row.length; c++) if (esHabitacion(row[c])) cols.push(c);
-  return cols;
+/** Datos de una fila-cabecera detectada: qué piso es y su desfase columna→índice. */
+interface Cabecera {
+  fila: number;
+  piso: number;
+  /** offset tal que: columna = offset + índice (índice 1..N del piso). */
+  offset: number;
+}
+
+/**
+ * Decide si una fila es una CABECERA de bloque (la fila con los números de habitación
+ * de un piso) y, si lo es, con qué piso y desfase. Es tolerante a typos y a un número
+ * suelto, pero rechaza las filas "desordenadas" (como las de Cambio Cerradura, donde
+ * los números no van en orden ni alineados a su columna): esas son datos, no cabeceras.
+ */
+function detectarCabecera(fila: number, row: unknown[]): Cabecera | null {
+  const celdas: { col: number; n: number }[] = [];
+  for (let c = 0; c < row.length; c++) {
+    if (esHabitacion(row[c])) celdas.push({ col: c, n: numDeCelda(row[c]) });
+  }
+  if (celdas.length < 3) return null;
+
+  const piso = moda(celdas.map((x) => pisoDeNum(x.n)));
+  if (!(piso in PISOS)) return null;
+
+  // Solo las celdas del piso mayoritario definen la grilla; el resto son sueltos.
+  const delPiso = celdas.filter((x) => pisoDeNum(x.n) === piso);
+  if (delPiso.length < 3 || delPiso.length < celdas.length * 0.5) return null;
+
+  // Una cabecera va en orden ascendente de izquierda a derecha (permite typos iguales).
+  for (let i = 1; i < delPiso.length; i++) {
+    if (delPiso[i].n < delPiso[i - 1].n) return null;
+  }
+
+  const offset = moda(delPiso.map((x) => x.col - idxDeNum(x.n)));
+  return { fila, piso, offset };
 }
 
 /** Ordena un conjunto de columnas: primero las comunes, luego el resto alfabético. */
@@ -196,44 +282,73 @@ function limpiarEstadoSiNoAplica(filas: RelevRow[]): void {
   if (!hayColor) for (const f of filas) delete f.campos["Estado"];
 }
 
+/** Ensambla el resultado final: rellena habitaciones faltantes y ordena por número. */
+function armarResultado(pestana: string, mapa: Map<number, RelevRow>): SheetResult {
+  const filas: RelevRow[] = [];
+  for (const room of habitacionesCanonicas()) {
+    const existente = mapa.get(room);
+    if (existente) {
+      filas.push(existente);
+    } else {
+      // Habitación de la grilla que la pestaña no traía: se incluye vacía (No revisado)
+      // para saber que falta revisar.
+      filas.push({
+        pestana,
+        piso: String(pisoDeNum(room)),
+        habitacion: String(room),
+        campos: { Estado: "No revisado" },
+      });
+    }
+  }
+  limpiarEstadoSiNoAplica(filas);
+  return { pestana, columnas: columnasDeFilas(filas), filas };
+}
+
 /**
- * Despivota una hoja con formato de GRILLA horizontal: bloques de habitaciones
- * (una fila-cabecera con los números) y, debajo, filas de atributos hasta el
- * próximo bloque. La columna A puede traer la etiqueta del atributo (DETALLE,
- * AUDITADA, REALIZADO…) o no traerla (entonces el valor va a "Detalle"). El estado
- * (color) se toma de la celda del número de habitación.
+ * Despivota una hoja con formato de GRILLA horizontal, normalizándola a la grilla
+ * canónica del hotel. Por cada bloque (piso) reconstruye las habitaciones por su
+ * POSICIÓN de columna, no por el número escrito: así arregla typos, rellena faltantes
+ * y descarta números sueltos. El estado (color) se toma de la celda del número.
  */
 function despivotarGrilla(
   pestana: string,
   valores: unknown[][],
   estados: Estado[][],
-  headerRows: number[]
+  cabeceras: Cabecera[]
 ): SheetResult {
-  const filas: RelevRow[] = [];
+  const mapa = new Map<number, RelevRow>();
 
-  for (let b = 0; b < headerRows.length; b++) {
-    const hr = headerRows[b];
-    const finBloque = b + 1 < headerRows.length ? headerRows[b + 1] : valores.length;
+  const obtener = (room: number): RelevRow => {
+    let fila = mapa.get(room);
+    if (!fila) {
+      fila = {
+        pestana,
+        piso: String(pisoDeNum(room)),
+        habitacion: String(room),
+        campos: { Estado: "No revisado" },
+      };
+      mapa.set(room, fila);
+    }
+    return fila;
+  };
 
-    // Mapa columna → habitación para este bloque.
-    const mapa: { col: number; hab: string }[] = [];
-    for (const c of columnasHab(valores[hr])) mapa.push({ col: c, hab: String(valores[hr][c]).trim() });
-    const minCol = Math.min(...mapa.map((m) => m.col));
-    // Si las habitaciones no arrancan en la col 0, la col 0 es la etiqueta.
+  for (let b = 0; b < cabeceras.length; b++) {
+    const { fila: hr, piso, offset } = cabeceras[b];
+    const finBloque = b + 1 < cabeceras.length ? cabeceras[b + 1].fila : valores.length;
+    const nIdx = PISOS[piso];
+
+    // Columna de la primera habitación del piso; si es >0, la col 0 es la etiqueta.
+    const minCol = offset + 1;
     const labelCol = minCol >= 1 ? 0 : -1;
 
-    // Una fila por habitación del bloque (aunque quede sin datos). El estado sale
-    // del color de la propia celda del número de habitación.
-    const registros = new Map<string, RelevRow>();
-    for (const { col, hab } of mapa) {
-      const fila: RelevRow = {
-        pestana,
-        piso: pisoDe(hab),
-        habitacion: hab,
-        campos: { Estado: estados[hr]?.[col] ?? "No revisado" },
-      };
-      registros.set(hab, fila);
-      filas.push(fila);
+    // Estado (color) de cada habitación, desde la celda de su número.
+    for (let idx = 1; idx <= nIdx; idx++) {
+      const col = offset + idx;
+      if (col < 0) continue;
+      const room = numeroHab(piso, idx);
+      const fila = obtener(room);
+      const est = estados[hr]?.[col] ?? "No revisado";
+      if (est !== "No revisado") fila.campos["Estado"] = est;
     }
 
     // Filas de atributos del bloque.
@@ -242,48 +357,61 @@ function despivotarGrilla(
       if (!row) continue;
       const etiquetaRaw = labelCol >= 0 ? celdaTexto(row[labelCol]) : "";
       const campo = etiquetaRaw ? normalizarEtiqueta(etiquetaRaw) : "Detalle";
-      for (const { col, hab } of mapa) {
-        agregarCampo(registros.get(hab)!.campos, campo, celdaTexto(row[col]));
+      for (let idx = 1; idx <= nIdx; idx++) {
+        const col = offset + idx;
+        if (col < 0) continue;
+        const valor = celdaTexto(row[col]);
+        if (!valor) continue;
+        // Un valor que es solo un número de habitación es basura (ej. filas
+        // desordenadas de Cambio Cerradura): no es un dato real, se ignora.
+        if (esHabitacion(valor)) continue;
+        agregarCampo(obtener(numeroHab(piso, idx)).campos, campo, valor);
       }
     }
   }
 
-  limpiarEstadoSiNoAplica(filas);
-  return { pestana, columnas: columnasDeFilas(filas), filas };
+  return armarResultado(pestana, mapa);
 }
 
 /**
  * Despivota una hoja VERTICAL (tipo "Generales"): la habitación está en la
- * columna A y el detalle en la B. Una fila del Excel = una habitación.
+ * columna A y el detalle en la B. Se normaliza igual a la grilla canónica.
  */
 function despivotarVertical(
   pestana: string,
   valores: unknown[][],
   estados: Estado[][]
 ): SheetResult {
-  const filas: RelevRow[] = [];
+  const mapa = new Map<number, RelevRow>();
   for (let r = 0; r < valores.length; r++) {
     const row = valores[r];
     if (!esHabitacion(row[0])) continue;
-    const hab = String(row[0]).trim();
+    const n = numDeCelda(row[0]);
+    if (!esCanonica(n)) continue; // descarta números sueltos / fuera de grilla
+    let fila = mapa.get(n);
+    if (!fila) {
+      fila = { pestana, piso: String(pisoDeNum(n)), habitacion: String(n), campos: { Estado: "No revisado" } };
+      mapa.set(n, fila);
+    }
+    const est = estados[r]?.[0] ?? "No revisado";
+    if (est !== "No revisado") fila.campos["Estado"] = est;
     const detalle = celdaTexto(row[1]);
-    const campos: Record<string, string> = { Estado: estados[r]?.[0] ?? "No revisado" };
-    if (detalle) campos["Detalle"] = detalle;
-    filas.push({ pestana, piso: pisoDe(hab), habitacion: hab, campos });
+    if (detalle && !esHabitacion(detalle)) agregarCampo(fila.campos, "Detalle", detalle);
   }
-  limpiarEstadoSiNoAplica(filas);
-  return { pestana, columnas: columnasDeFilas(filas), filas };
+  return armarResultado(pestana, mapa);
 }
 
 /** Despivota una sola hoja, eligiendo el modo (grilla o vertical) automáticamente. */
 export function despivotarHoja(pestana: string, ws: XLSX.WorkSheet): SheetResult {
   const { valores, estados } = leerHoja(ws);
-  // Fila-cabecera = fila con 3+ números de habitación (bloques horizontales).
-  const headerRows: number[] = [];
+
+  // Cabeceras = filas con los números de habitación de un piso (en orden y alineados).
+  const cabeceras: Cabecera[] = [];
   for (let i = 0; i < valores.length; i++) {
-    if (columnasHab(valores[i]).length >= 3) headerRows.push(i);
+    const cab = detectarCabecera(i, valores[i]);
+    if (cab) cabeceras.push(cab);
   }
-  if (headerRows.length > 0) return despivotarGrilla(pestana, valores, estados, headerRows);
+  if (cabeceras.length > 0) return despivotarGrilla(pestana, valores, estados, cabeceras);
 
   // Sin bloques horizontales: ¿hay habitaciones en la columna A (vertical)?
   const habsColA = valores.filter((r) => esHabitacion(r[0])).length;

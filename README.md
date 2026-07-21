@@ -62,6 +62,15 @@ pestaña `Generales` es vertical (habitación en columna A, detalle en la B).
 
 Airtable necesita **una fila por registro**, así que la herramienta **despivota** esa grilla.
 
+**Normalización a la grilla del hotel.** Las pestañas del Excel vienen con errores de carga
+(typos en el número, habitaciones repetidas, números sueltos fuera de lugar, filas
+desordenadas, o habitaciones que faltan). La herramienta conoce la grilla real del hotel —
+**83 habitaciones**: pisos 1–8 con `X01`–`X09`, piso 9 con `901`–`907` y piso 10 con
+`1001`–`1004`— y reconstruye cada habitación **por su posición de columna**, no por el
+número escrito. Así corrige typos (ej. un `804` repetido que en realidad es `805`), rellena
+las habitaciones que faltan, descarta números sueltos y evita duplicados. Resultado: **todas
+las pestañas quedan con las mismas 83 habitaciones**.
+
 ### Cómo funciona
 
 1. Subís el Excel (`.xlsx` / `.xls`) con una o varias pestañas.
