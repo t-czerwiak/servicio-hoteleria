@@ -69,7 +69,8 @@ desordenadas, o habitaciones que faltan). La herramienta conoce la grilla real d
 `1001`–`1004`— y reconstruye cada habitación **por su posición de columna**, no por el
 número escrito. Así corrige typos (ej. un `804` repetido que en realidad es `805`), rellena
 las habitaciones que faltan, descarta números sueltos y evita duplicados. Resultado: **todas
-las pestañas quedan con las mismas 83 habitaciones**.
+las pestañas quedan con las mismas habitaciones**. (La `1002` no existe en el hotel —está por
+error en la planilla— así que se excluye; el piso 10 queda con `1001`, `1003` y `1004`.)
 
 ### Cómo funciona
 
@@ -86,6 +87,8 @@ las pestañas quedan con las mismas 83 habitaciones**.
      `No revisado`. Aparece solo en las pestañas que usan colores. En la vista previa se
      muestra pintado; en el CSV va como **texto** (en Airtable podés convertirlo en un campo
      "single select" con colores).
+   - **`Estado N°`** es el mismo estado en número, para importar más fácil: `Bien = 5`,
+     `Más o menos = 3`, `Mal = 1`, `No revisado` queda en blanco.
    - Las fechas se formatean `dd/mm/aaaa`. Los demás datos van **en crudo**, sin clasificar.
    - Se incluyen todas las habitaciones del bloque (para ver qué falta revisar).
 3. **Se ve y se descarga una pestaña a la vez**: elegís la pestaña en un selector, ves su

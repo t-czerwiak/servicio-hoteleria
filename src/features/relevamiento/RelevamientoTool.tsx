@@ -23,7 +23,7 @@ const CLASE_ESTADO: Record<string, string> = {
 /** Clase CSS de una celda de la vista previa según su columna y valor. */
 function claseCelda(columna: string, valor: string): string | undefined {
   if (columna === "Estado") return CLASE_ESTADO[valor] ?? undefined;
-  if (columna === "Piso" || columna === "Habitación") return "num";
+  if (columna === "Piso" || columna === "Habitación" || columna === "Estado N°") return "num";
   return undefined;
 }
 
@@ -236,12 +236,12 @@ export default function RelevamientoTool() {
           {columnas.includes("Estado") && (
             <p className="leyenda-estado">
               Estado (según el color en el Excel):
-              <span className="est est--bien">Bien</span>
-              <span className="est est--mas">Más o menos</span>
-              <span className="est est--mal">Mal</span>
-              <span className="est est--no">No revisado</span>
+              <span className="est est--bien">Bien = 5</span>
+              <span className="est est--mas">Más o menos = 3</span>
+              <span className="est est--mal">Mal = 1</span>
+              <span className="est est--no">No revisado = (en blanco)</span>
               <span className="leyenda-estado__nota">
-                — en el CSV va como texto (en Airtable podés hacerlo un campo con colores).
+                — la columna «Estado N°» trae ese número, para importar más fácil.
               </span>
             </p>
           )}

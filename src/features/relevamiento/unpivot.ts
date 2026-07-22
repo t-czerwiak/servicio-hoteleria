@@ -39,7 +39,21 @@ export interface SheetResult {
 export const COLUMNAS_BASE = ["Pestaña", "Piso", "Habitación"] as const;
 
 /** Orden preferido de las columnas de campo. Estado primero; el resto detrás, alfabético. */
-const ORDEN_CAMPOS = ["Estado", "Detalle", "Auditada", "Realizado", "Observación"];
+const ORDEN_CAMPOS = ["Estado", "Estado N°", "Detalle", "Auditada", "Realizado", "Observación"];
+
+/** Estado → número, para importar más fácil. "No revisado" queda en blanco. */
+const ESTADO_NUM: Record<Estado, string> = {
+  Bien: "5",
+  "Más o menos": "3",
+  Mal: "1",
+  "No revisado": "",
+};
+
+/**
+ * Habitaciones que NO existen aunque aparezcan en la planilla (errores de carga).
+ * Se descartan de todas las listas. Ej.: la 1002 no existe en el hotel.
+ */
+const HABITACIONES_EXCLUIDAS = new Set<number>([1002]);
 
 /**
  * Grilla CANÓNICA del hotel: cuántas habitaciones tiene cada piso.
@@ -67,6 +81,7 @@ function idxDeNum(n: number): number {
 
 /** ¿El número corresponde a una habitación real de la grilla canónica? */
 function esCanonica(n: number): boolean {
+  if (HABITACIONES_EXCLUIDAS.has(n)) return false;
   const piso = pisoDeNum(n);
   const idx = idxDeNum(n);
   return piso in PISOS && idx >= 1 && idx <= PISOS[piso];
@@ -76,7 +91,10 @@ function esCanonica(n: number): boolean {
 function habitacionesCanonicas(): number[] {
   const rooms: number[] = [];
   for (const piso of Object.keys(PISOS).map(Number)) {
-    for (let idx = 1; idx <= PISOS[piso]; idx++) rooms.push(numeroHab(piso, idx));
+    for (let idx = 1; idx <= PISOS[piso]; idx++) {
+      const n = numeroHab(piso, idx);
+      if (!HABITACIONES_EXCLUIDAS.has(n)) rooms.push(n);
+    }
   }
   return rooms.sort((a, b) => a - b);
 }
@@ -288,10 +306,19 @@ function columnasDeFilas(filas: RelevRow[]): string[] {
 /**
  * La columna "Estado" solo tiene sentido si la pestaña usa colores. Si ninguna
  * habitación tiene color (todas "No revisado"), se quita para no ensuciar la lista.
+ * Si sí aplica, agrega también la columna numérica "Estado N°" (Bien=5, Más o
+ * menos=3, Mal=1, No revisado en blanco) para importar más fácil.
  */
-function limpiarEstadoSiNoAplica(filas: RelevRow[]): void {
+function completarEstado(filas: RelevRow[]): void {
   const hayColor = filas.some((f) => f.campos["Estado"] && f.campos["Estado"] !== "No revisado");
-  if (!hayColor) for (const f of filas) delete f.campos["Estado"];
+  if (!hayColor) {
+    for (const f of filas) delete f.campos["Estado"];
+    return;
+  }
+  for (const f of filas) {
+    const num = ESTADO_NUM[(f.campos["Estado"] as Estado) ?? "No revisado"];
+    if (num) f.campos["Estado N°"] = num;
+  }
 }
 
 /** Ensambla el resultado final: rellena habitaciones faltantes y ordena por número. */
@@ -312,7 +339,7 @@ function armarResultado(pestana: string, mapa: Map<number, RelevRow>): SheetResu
       });
     }
   }
-  limpiarEstadoSiNoAplica(filas);
+  completarEstado(filas);
   return { pestana, columnas: columnasDeFilas(filas), filas };
 }
 
@@ -359,6 +386,7 @@ function despivotarGrilla(
       const col = offset + idx;
       if (col < 0) continue;
       const room = numeroHab(piso, idx);
+      if (HABITACIONES_EXCLUIDAS.has(room)) continue; // habitación inexistente
       const fila = obtener(room);
       const est = estados[hr]?.[col] ?? "No revisado";
       if (est !== "No revisado") fila.campos["Estado"] = est;
@@ -373,12 +401,14 @@ function despivotarGrilla(
       for (let idx = 1; idx <= nIdx; idx++) {
         const col = offset + idx;
         if (col < 0) continue;
+        const room = numeroHab(piso, idx);
+        if (HABITACIONES_EXCLUIDAS.has(room)) continue; // habitación inexistente
         const valor = celdaTexto(row[col]);
         if (!valor) continue;
         // Un valor que es solo un número de habitación es basura (ej. filas
         // desordenadas de Cambio Cerradura): no es un dato real, se ignora.
         if (esHabitacion(valor)) continue;
-        agregarCampo(obtener(numeroHab(piso, idx)).campos, campo, valor);
+        agregarCampo(obtener(room).campos, campo, valor);
       }
     }
   }
